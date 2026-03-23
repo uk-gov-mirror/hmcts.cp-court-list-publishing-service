@@ -84,7 +84,7 @@ public class SjpCourtListPublishService {
             String lang = (language != null && !language.isBlank()) ? language : "ENGLISH";
 
             String payloadJson = transformer.transform(payload, documentName);
-            DtsMeta meta = buildDtsMeta(cathListType, sensitivity, lang);
+            DtsMeta meta = buildDtsMeta(cathListType, sensitivity, lang, payload.getCourtIdNumeric());
 
             int status = courtListPublisher.publish(payloadJson, meta);
             LOG.info("SJP court list published to CaTH, listType={}, status={}", listType, status);
@@ -99,7 +99,14 @@ public class SjpCourtListPublishService {
         }
     }
 
-    private static DtsMeta buildDtsMeta(String listType, String sensitivity, String language) {
+    /**
+     * Same court id resolution as {@link uk.gov.hmcts.cp.services.CaTHService#sendCourtListToCaTH}:
+     * use numeric id from payload when present, otherwise {@code "0"}.
+     */
+    private static DtsMeta buildDtsMeta(String listType, String sensitivity, String language, String courtIdNumeric) {
+        final String courtIdForMeta = courtIdNumeric != null && !courtIdNumeric.isBlank()
+                ? courtIdNumeric
+                : "0";
         Instant now = Instant.now();
         String contentDate = now.toString();
         String displayTo = now.plus(24, ChronoUnit.HOURS).toString();
@@ -107,7 +114,7 @@ public class SjpCourtListPublishService {
                 .provenance(PROVENANCE)
                 .type(TYPE_LIST)
                 .listType(listType)
-                .courtId("0")
+                .courtId(courtIdForMeta)
                 .contentDate(contentDate)
                 .language(language)
                 .sensitivity(sensitivity)
