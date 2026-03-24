@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/courtlist.*",
+    "queryParameters": {
+      "listId": {
+        "equalTo": "ALPHABETICAL"
+      }
+    },
+    "headers": {
+      "Accept": {
+        "equalTo": "application/vnd.courtlist.search.court.list+json"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "bodyFileName": "court-list-payload-alphabetical.json"
+  },
+  "priority": 2
+}

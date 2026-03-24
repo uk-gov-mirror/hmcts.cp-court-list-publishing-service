@@ -1,0 +1,7 @@
+{
+  "listType": "ushersCrown",
+  "courtCentreName": "Test Court Centre",
+  "courtCentreDefaultStartTime": "10:00:00",
+  "hearingDates": [],
+  "templateName": "UshersCrownCourtList"
+}

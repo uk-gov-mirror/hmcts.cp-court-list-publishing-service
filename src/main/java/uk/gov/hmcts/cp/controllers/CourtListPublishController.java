@@ -10,6 +10,7 @@ import uk.gov.hmcts.cp.openapi.model.PublishCourtListRequest;
 import uk.gov.hmcts.cp.openapi.model.PublishCourtListResponse;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadException;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
+import uk.gov.hmcts.cp.services.courtlistdownload.CourtListFileResult;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService.SjpPublishResult;
@@ -30,6 +31,9 @@ import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -39,8 +43,6 @@ public class CourtListPublishController implements CourtListPublishApi {
 
     private static final Logger LOG = LoggerFactory.getLogger(CourtListPublishController.class);
 
-    private static final String PDF_FILENAME = "CourtList.pdf";
-    private static final String CONTENT_DISPOSITION_VALUE = "attachment; filename=\"" + PDF_FILENAME + "\"";
 
     private final CourtListPublishStatusService service;
     private final CourtListTaskTriggerService courtListTaskTriggerService;
@@ -111,24 +113,26 @@ public class CourtListPublishController implements CourtListPublishApi {
         if (request.getCourtListType() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "courtListType is required");
         }
-        if (!CourtListType.PUBLIC.equals(request.getCourtListType())) {
+        if (!isSupportedCourtListTypeForDownload(request.getCourtListType())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "Only PUBLIC court list type is supported for download. Got: " + request.getCourtListType());
+                "Download supported for PUBLIC, BENCH, ALPHABETICAL, USHERS_CROWN, USHERS_MAGISTRATE only. Got: "
+                    + request.getCourtListType());
         }
         if (request.getEndDate().isBefore(request.getStartDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must be on or after startDate");
         }
         try {
-            byte[] pdf = courtListDownloadService.generatePublicCourtListPdf(
-                request.getCourtCentreId().toString(),
-                request.getStartDate(),
-                request.getEndDate());
+            CourtListFileResult result = courtListDownloadService.generateCourtListDownload(
+                    request.getCourtListType(),
+                    request.getCourtCentreId().toString(),
+                    request.getStartDate(),
+                    request.getEndDate());
             HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.set(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE);
-            return ResponseEntity.ok().headers(headers).body(new ByteArrayResource(pdf));
+            headers.setContentType(MediaType.parseMediaType(result.contentType()));
+            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + result.filename() + "\"");
+            return ResponseEntity.ok().headers(headers).body(new ByteArrayResource(result.content()));
         } catch (CourtListDownloadException e) {
-            LOG.warn("Public court list download error: {}", e.getMessage());
+            LOG.warn("Court list download error: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage());
         }
     }
@@ -171,6 +175,17 @@ public class CourtListPublishController implements CourtListPublishApi {
         return ResponseEntity.ok()
                 .contentType(new MediaType("application", "vnd.courtlistpublishing-service.publish.get+json"))
                 .body(responses);
+    }
+
+    private static final Set<CourtListType> SUPPORTED_DOWNLOAD_COURT_LIST_TYPES = EnumSet.of(
+            CourtListType.PUBLIC,
+            CourtListType.BENCH,
+            CourtListType.ALPHABETICAL,
+            CourtListType.USHERS_CROWN,
+            CourtListType.USHERS_MAGISTRATE);
+
+    private static boolean isSupportedCourtListTypeForDownload(CourtListType courtListType) {
+        return courtListType != null && SUPPORTED_DOWNLOAD_COURT_LIST_TYPES.contains(courtListType);
     }
 
     private static String getCjscppuidFromRequest() {

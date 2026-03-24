@@ -12,9 +12,11 @@ import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadException;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
+import uk.gov.hmcts.cp.services.courtlistdownload.CourtListFileResult;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService;
 
 import java.time.LocalDate;
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -34,6 +36,8 @@ class CourtListDownloadControllerTest {
     private static final String DOWNLOAD_URL = "/api/court-list-publish/download";
     private static final String DOWNLOAD_CONTENT_TYPE = "application/vnd.courtlistpublishing-service.download.post+json";
     private static final byte[] PDF_BYTES = "PDF content".getBytes();
+    private static final byte[] WORD_BYTES = "Word content".getBytes();
+    private static final String WORD_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     private MockMvc mockMvc;
 
@@ -66,11 +70,13 @@ class CourtListDownloadControllerTest {
 
     @Test
     void downloadCourtListReturnsPdfWhenValidRequestBody() throws Exception {
-        when(courtListDownloadService.generatePublicCourtListPdf(
+        CourtListFileResult result = new CourtListFileResult(PDF_BYTES, "application/pdf", "CourtList.pdf");
+        when(courtListDownloadService.generateCourtListDownload(
+                eq(CourtListType.PUBLIC),
                 eq(COURT_CENTRE_ID),
                 any(LocalDate.class),
                 any(LocalDate.class)))
-                .thenReturn(PDF_BYTES);
+                .thenReturn(result);
 
         mockMvc.perform(post(DOWNLOAD_URL)
                         .contentType(DOWNLOAD_CONTENT_TYPE)
@@ -80,7 +86,8 @@ class CourtListDownloadControllerTest {
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"CourtList.pdf\""))
                 .andExpect(content().bytes(PDF_BYTES));
 
-        verify(courtListDownloadService).generatePublicCourtListPdf(eq(COURT_CENTRE_ID), any(LocalDate.class), any(LocalDate.class));
+        verify(courtListDownloadService).generateCourtListDownload(
+                eq(CourtListType.PUBLIC), eq(COURT_CENTRE_ID), any(LocalDate.class), any(LocalDate.class));
     }
 
     @Test
@@ -137,13 +144,37 @@ class CourtListDownloadControllerTest {
     void downloadCourtListReturns400WhenEndDateBeforeStartDate() throws Exception {
         mockMvc.perform(post(DOWNLOAD_URL)
                         .contentType(DOWNLOAD_CONTENT_TYPE)
-                        .content(downloadRequestJson(COURT_CENTRE_ID, "2026-02-28", "2026-02-27")))
+                        .content(downloadRequestJson(COURT_CENTRE_ID, "2026-02-28", END_DATE)))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
+    void downloadCourtListReturnsWordWhenUshersMagistrate() throws Exception {
+        CourtListFileResult wordResult = new CourtListFileResult(WORD_BYTES, WORD_CONTENT_TYPE, "CourtList.docx");
+        when(courtListDownloadService.generateCourtListDownload(
+                eq(CourtListType.USHERS_MAGISTRATE),
+                eq(COURT_CENTRE_ID),
+                any(LocalDate.class),
+                any(LocalDate.class)))
+                .thenReturn(wordResult);
+
+        mockMvc.perform(post(DOWNLOAD_URL)
+                        .contentType(DOWNLOAD_CONTENT_TYPE)
+                        .content("""
+                            {"courtCentreId": "%s", "startDate": "%s", "endDate": "%s", "courtListType": "USHERS_MAGISTRATE"}
+                            """.formatted(COURT_CENTRE_ID, START_DATE, END_DATE)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(WORD_CONTENT_TYPE))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"CourtList.docx\""))
+                .andExpect(content().bytes(WORD_BYTES));
+
+        verify(courtListDownloadService).generateCourtListDownload(
+                eq(CourtListType.USHERS_MAGISTRATE), eq(COURT_CENTRE_ID), any(LocalDate.class), any(LocalDate.class));
+    }
+
+    @Test
     void downloadCourtListReturns502WhenServiceThrows() throws Exception {
-        when(courtListDownloadService.generatePublicCourtListPdf(any(), any(LocalDate.class), any(LocalDate.class)))
+        when(courtListDownloadService.generateCourtListDownload(any(CourtListType.class), any(), any(LocalDate.class), any(LocalDate.class)))
                 .thenThrow(new CourtListDownloadException("Failed to fetch court list"));
 
         mockMvc.perform(post(DOWNLOAD_URL)

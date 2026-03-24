@@ -18,11 +18,16 @@ import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.models.CourtListPayload;
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadException;
+import uk.gov.hmcts.cp.services.courtlistdownload.CourtListFileResult;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -32,6 +37,19 @@ public class CourtListDataService {
     private static final String LIST_ID_PUBLIC = "PUBLIC";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE;
     private static final String COURT_LIST_DATA_PATH = "courtlist";
+    private static final String ACCEPT_COURTLIST_SEARCH = "application/vnd.courtlist.search.court.list+json";
+    private static final Set<CourtListType> DOWNLOAD_TYPES_COURTLIST_API = EnumSet.of(
+            CourtListType.PUBLIC,
+            CourtListType.BENCH,
+            CourtListType.ALPHABETICAL,
+            CourtListType.USHERS_CROWN,
+            CourtListType.USHERS_MAGISTRATE);
+
+    private static final String CONTENT_TYPE_WORD =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private static final String WORD_FILENAME = "CourtList.docx";
+    private static final String DATA_URL_PREFIX = "data:";
+    private static final String DATA_URL_BASE64 = "base64,";
 
     private final ProgressionQueryService progressionQueryService;
     private final RestTemplate publicCourtListRestTemplate;
@@ -78,12 +96,13 @@ public class CourtListDataService {
         }
     }
 
-    public Map<String, Object> getPublicCourtListPayload(String courtCentreId, LocalDate startDate, LocalDate endDate) {
+    public Map<String, Object> getCourtListPayloadFromCourtListApi(
+            String listId, String courtCentreId, LocalDate startDate, LocalDate endDate) {
         if (courtListDataBaseUrl.isBlank()) {
-            throw new CourtListDownloadException("Public court list data is not configured");
+            throw new CourtListDownloadException("Court list data is not configured");
         }
         String url = UriComponentsBuilder.fromUriString(courtListDataBaseUrl + "/" + COURT_LIST_DATA_PATH)
-                .queryParam("listId", LIST_ID_PUBLIC)
+                .queryParam("listId", listId)
                 .queryParam("courtCentreId", courtCentreId)
                 .queryParam("startDate", startDate.format(DATE_FORMAT))
                 .queryParam("endDate", endDate.format(DATE_FORMAT))
@@ -93,7 +112,7 @@ public class CourtListDataService {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(
-                MediaType.parseMediaType("application/vnd.courtlist.search.court.list+json")));
+                MediaType.parseMediaType(ACCEPT_COURTLIST_SEARCH)));
 
         try {
             ResponseEntity<Map<String, Object>> response = publicCourtListRestTemplate.exchange(
@@ -101,8 +120,65 @@ public class CourtListDataService {
                     new ParameterizedTypeReference<Map<String, Object>>() {});
             return response.getBody();
         } catch (RestClientException e) {
-            log.error("Court list data API call failed for courtCentreId={}", courtCentreId, e);
+            log.error("Court list API call failed for listId={}, courtCentreId={}", listId, courtCentreId, e);
             throw new CourtListDownloadException("Failed to fetch court list: " + e.getMessage(), e);
+        }
+    }
+
+    public Map<String, Object> getPublicCourtListPayload(String courtCentreId, LocalDate startDate, LocalDate endDate) {
+        return getCourtListPayloadFromCourtListApi(LIST_ID_PUBLIC, courtCentreId, startDate, endDate);
+    }
+
+    public Map<String, Object> getCourtListPayloadForDownload(
+            CourtListType courtListType, String courtCentreId, LocalDate startDate, LocalDate endDate) {
+        if (!DOWNLOAD_TYPES_COURTLIST_API.contains(courtListType)) {
+            throw new CourtListDownloadException("Unsupported court list type for download: " + courtListType);
+        }
+        return getCourtListPayloadFromCourtListApi(courtListType.name(), courtCentreId, startDate, endDate);
+    }
+
+    public CourtListFileResult getCourtListFileForDownload(
+            CourtListType courtListType, String courtCentreId, LocalDate startDate, LocalDate endDate) {
+        if (courtListDataBaseUrl.isBlank()) {
+            throw new CourtListDownloadException("Court list data is not configured");
+        }
+        String url = UriComponentsBuilder.fromUriString(courtListDataBaseUrl + "/" + COURT_LIST_DATA_PATH)
+                .queryParam("listId", courtListType.name())
+                .queryParam("courtCentreId", courtCentreId)
+                .queryParam("startDate", startDate.format(DATE_FORMAT))
+                .queryParam("endDate", endDate.format(DATE_FORMAT))
+                .queryParam("restricted", false)
+                .build()
+                .toUriString();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(Collections.singletonList(MediaType.parseMediaType(ACCEPT_COURTLIST_SEARCH)));
+
+        try {
+            ResponseEntity<String> response = publicCourtListRestTemplate.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            String body = response.getBody();
+            if (body == null || body.isBlank()) {
+                throw new CourtListDownloadException("Court list API returned empty response");
+            }
+            byte[] content;
+            if (body.startsWith(DATA_URL_PREFIX) && body.contains(DATA_URL_BASE64)) {
+                int i = body.indexOf(DATA_URL_BASE64);
+                String base64 = body.substring(i + DATA_URL_BASE64.length()).trim();
+                content = Base64.getDecoder().decode(base64);
+            } else {
+                content = body.getBytes(StandardCharsets.UTF_8);
+            }
+            if (content.length == 0) {
+                throw new CourtListDownloadException("Court list API returned empty file");
+            }
+            return new CourtListFileResult(content, CONTENT_TYPE_WORD, WORD_FILENAME);
+        } catch (RestClientException e) {
+            log.error("Court list file API call failed for listId={}, courtCentreId={}", courtListType, courtCentreId, e);
+            throw new CourtListDownloadException("Failed to fetch court list file: " + e.getMessage(), e);
+        } catch (IllegalArgumentException e) {
+            log.error("Court list file base64 decode failed for listId={}", courtListType, e);
+            throw new CourtListDownloadException("Invalid court list file response: " + e.getMessage(), e);
         }
     }
 }
