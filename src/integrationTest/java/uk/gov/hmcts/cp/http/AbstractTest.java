@@ -16,9 +16,15 @@ import org.springframework.web.client.RestTemplate;
  */
 public abstract class AbstractTest {
 
-    private static final String WIREMOCK_BASE_URL =
+    public static final String WIREMOCK_BASE_URL =
             System.getProperty("wiremock.baseUrl", "http://localhost:8089");
-    private static final String RESET_MAPPINGS = WIREMOCK_BASE_URL + "/__admin/mappings/reset";
+
+    public static final String WIREMOCK_ADMIN_MAPPINGS_RESET = WIREMOCK_BASE_URL + "/__admin/mappings/reset";
+    public static final String WIREMOCK_ADMIN_MAPPINGS = WIREMOCK_BASE_URL + "/__admin/mappings";
+    public static final String WIREMOCK_ADMIN_REQUESTS = WIREMOCK_BASE_URL + "/__admin/requests";
+
+    /** CaTH publish path (leading slash); matches default {@code cath.endpoint}. */
+    public static final String CATH_PUBLICATION_URL_PATH = "/courtlistpublisher/publication";
 
     @BeforeAll
     static void initTest() {
@@ -28,16 +34,14 @@ public abstract class AbstractTest {
     static void resetWireMock() {
         RestTemplate rest = new RestTemplate();
         ResponseEntity<String> response = rest.exchange(
-                RESET_MAPPINGS,
+                WIREMOCK_ADMIN_MAPPINGS_RESET,
                 HttpMethod.POST,
                 new HttpEntity<>(new HttpHeaders()),
                 String.class
         );
         if (!response.getStatusCode().is2xxSuccessful()) {
             throw new IllegalStateException(
-                    "WireMock reset failed: " + response.getStatusCode() + " from " + RESET_MAPPINGS);
+                    "WireMock reset failed: " + response.getStatusCode() + " from " + WIREMOCK_ADMIN_MAPPINGS_RESET);
         }
     }
-
-
 }

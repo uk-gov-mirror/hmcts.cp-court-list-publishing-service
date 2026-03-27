@@ -6,9 +6,6 @@ import static uk.gov.hmcts.cp.openapi.model.CourtListType.ONLINE_PUBLIC;
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpEntity;
@@ -17,99 +14,28 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
 
-import uk.gov.hmcts.cp.openapi.model.Status;
+public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends CourtListIntegrationTestBase {
 
-@Slf4j
-public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends AbstractTest {
-
-    private static final String BASE_URL = System.getProperty("app.baseUrl", "http://localhost:8082/courtlistpublishing-service");
-    private static final String PUBLISH_ENDPOINT = BASE_URL + "/api/court-list-publish/publish";
-    private static final String GET_STATUS_ENDPOINT = BASE_URL + "/api/court-list-publish/publish-status";
-    private static final String WIREMOCK_BASE_URL = System.getProperty("wiremock.baseUrl", "http://localhost:8089");
-    private static final String WIREMOCK_MAPPINGS_URL = WIREMOCK_BASE_URL + "/__admin/mappings";
-    private static final String CJSCPPUID_HEADER = "CJSCPPUID";
-    private static final String INTEGRATION_TEST_USER_ID = "integration-test-user-id";
-
-    private final RestTemplate http = new RestTemplate();
-    private final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
+    private static final long WIREMOCK_STUB_REGISTER_DELAY_MS = 500;
 
     @Test
     void publishCourtList_shouldQueryAndSendToCaTH_whenValidRequest() throws Exception {
-        // Given
-        UUID courtCentreId = UUID.randomUUID();
-        String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
-        
-        // When - Publish court list (this triggers the task)
-        ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-        
-        // Then - Verify publish response
-        assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        JsonNode publishBody = parseResponse(publishResponse);
-        UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-        assertThat(publishBody.get("publishStatus").asText()).isEqualTo("REQUESTED");
-        
-        // Wait for async task to complete (task execution is asynchronous)
-        // Task manager JobExecutor polls the database and executes tasks
-        // Note: The task manager service is an external dependency that uses @Scheduled polling
-        // If tasks aren't executing, check that the JobExecutor is running and polling frequently enough
-        waitForTaskCompletion(courtListId, 120000); // 2 minutes timeout
-        
-        // Verify status was updated to SUCCESSFUL
+        UUID courtListId = publishOnlinePublicExpectingRequested();
+        waitForTaskCompletion(courtListId, TASK_TIMEOUT_MS);
+
         ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
         assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        JsonNode statusBody = parseResponse(statusResponse);
-        assertThat(statusBody.get("publishStatus").asText()).isEqualTo("SUCCESSFUL");
+        assertThat(parseResponse(statusResponse).get("publishStatus").asText()).isEqualTo("SUCCESSFUL");
     }
 
     @Test
     void publishCourtList_shouldStillUpdateStatus_whenCaTHEndpointFails() throws Exception {
-        // Given - CaTH returns 500 (add stub with priority 0 so it wins over default success)
         addCathFailureStub();
         try {
-            UUID courtCentreId = UUID.randomUUID();
-            String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
+            UUID courtListId = publishOnlinePublicExpectingRequested();
+            waitForTaskCompletion(courtListId, TASK_TIMEOUT_MS);
 
-            // When - Publish court list (task will call CaTH and get 500)
-            ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-
-            assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            JsonNode publishBody = parseResponse(publishResponse);
-            UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-
-            waitForTaskCompletion(courtListId, 120000);
-
-            // Then - DB has publishStatus FAILED and publishErrorMessage set
-            ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
-            assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            JsonNode statusBody = parseResponse(statusResponse);
-            assertThat(statusBody.get("publishStatus").asText()).isEqualTo("FAILED");
-            assertThat(statusBody.has("publishErrorMessage")).isTrue();
-            assertThat(statusBody.get("publishErrorMessage").asText()).isNotBlank();
-        } finally {
-            AbstractTest.resetWireMock();
-        }
-    }
-
-    @Test
-    void publishCourtList_shouldSetPublishFailedAndSavePublishErrorMessage_whenCaTHFails() throws Exception {
-        // Given - CaTH returns 500 (add stub with priority 0 so it wins over default success)
-        addCathFailureStub();
-        try {
-            UUID courtCentreId = UUID.randomUUID();
-            String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
-
-            // When - Publish court list (task calls CaTH and gets 500)
-            ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-
-            assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            JsonNode publishBody = parseResponse(publishResponse);
-            UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-
-            waitForTaskCompletion(courtListId, 120000);
-
-            // Then - DB has publishStatus FAILED and publishErrorMessage set
             ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
             assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             JsonNode statusBody = parseResponse(statusResponse);
@@ -123,23 +49,11 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
 
     @Test
     void publishCourtList_shouldSetFileFailedAndSaveFileErrorMessage_whenPdfGenerationFails() throws Exception {
-        // Given - Add stub so document-generator returns 500 (only for this test)
         addDocumentGeneratorFailureStub();
-
         try {
-            UUID courtCentreId = UUID.randomUUID();
-            String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
+            UUID courtListId = publishOnlinePublicExpectingRequested();
+            waitForTaskCompletion(courtListId, TASK_TIMEOUT_MS);
 
-            // When - Publish court list (task will call document-generator and get 500)
-            ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-
-            assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            JsonNode publishBody = parseResponse(publishResponse);
-            UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-
-            waitForTaskCompletion(courtListId, 120000);
-
-            // Then - DB has fileStatus FAILED and fileErrorMessage set
             ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
             assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             JsonNode statusBody = parseResponse(statusResponse);
@@ -155,27 +69,21 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
     void publishCourtList_shouldCreateDbEntry_triggerTask_andUpdateFileUrlWithPdfUrl() throws Exception {
         UUID courtCentreId = UUID.randomUUID();
         String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
-
-        // When - Call publishCourtList (controller) - this triggers createOrUpdate and triggerCourtListTask
         ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
 
-        // Then - Verify publish response
         assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode publishBody = parseResponse(publishResponse);
         UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
         assertThat(publishBody.get("publishStatus").asText()).isEqualTo("REQUESTED");
 
-        // Verify CourtListPublishStatusService createOrUpdate created entry in DB (record exists)
         ResponseEntity<String> immediateStatus = getStatusRequest(courtListId);
         assertThat(immediateStatus.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode immediateBody = parseResponse(immediateStatus);
         assertThat(immediateBody.get("courtListId").asText()).isEqualTo(courtListId.toString());
         assertThat(immediateBody.get("courtCentreId").asText()).isEqualTo(courtCentreId.toString());
 
-        // Wait for async task to complete (file status/fileId updated after PDF generation)
-        waitForFileCompletion(courtListId, 120000);
+        waitForPDFGenerationFileCompletion(courtListId, TASK_TIMEOUT_MS);
 
-        // Verify row updated with fileId (PDF uploaded as {courtListId}.pdf)
         ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
         assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode statusBody = parseResponse(statusResponse);
@@ -188,22 +96,11 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
 
     @Test
     void publishCourtList_shouldSetPublishFailedWithErrorMessage_whenSchemaValidationFails() throws Exception {
-        // Given - progression courtlistdata API returns payload that transforms to document failing schema validation (e.g. case with null caseUrn)
         addSchemaInvalidPayloadStub();
         try {
-            UUID courtCentreId = UUID.randomUUID();
-            String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
+            UUID courtListId = publishOnlinePublicExpectingRequested();
+            waitForTaskCompletion(courtListId, TASK_TIMEOUT_MS);
 
-            // When - Publish court list (task will fetch invalid payload, transform, then schema validation fails)
-            ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-            assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-            JsonNode publishBody = parseResponse(publishResponse);
-            UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-
-            waitForTaskCompletion(courtListId, 120000);
-
-            // Then - publishStatus is FAILED and publishErrorMessage contains schema validation failure when present
-            // (Schema validation fails in buildCourtListDocumentFromPayload, so ErrorContext.PUBLISH is used)
             ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
             assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             JsonNode statusBody = parseResponse(statusResponse);
@@ -218,121 +115,37 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
         }
     }
 
-    @Test
-    void publishCourtList_shouldStillUpdateStatus_whenQueryApiFails() throws Exception {
-        // Given
+    /** POST + 200 + REQUESTED; returns new {@code courtListId}. */
+    private UUID publishOnlinePublicExpectingRequested() throws Exception {
         UUID courtCentreId = UUID.randomUUID();
-        String requestJson = createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString());
-        
-        // When - Publish court list
-        ResponseEntity<String> publishResponse = postPublishRequest(requestJson);
-        
-        // Then - Verify publish response
+        ResponseEntity<String> publishResponse =
+                postPublishRequest(createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString()));
         assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode publishBody = parseResponse(publishResponse);
-        UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
-        log.info("Created court list with ID: {}", courtListId);
-        log.info("Initial status: {}", publishBody.get("publishStatus").asText());
-        
-        // Immediately verify the record exists
-        try {
-            ResponseEntity<String> immediateStatus = getStatusRequest(courtListId);
-            if (immediateStatus.getStatusCode().is2xxSuccessful()) {
-                JsonNode immediateBody = parseResponse(immediateStatus);
-                log.info("Immediate status check: {}", immediateBody.get("publishStatus").asText());
-            }
-        } catch (Exception e) {
-            log.error("ERROR: Could not retrieve status immediately after creation: {}", e.getMessage(), e);
-            throw new AssertionError("Record was not created or is not accessible", e);
-        }
-        
-        // Wait for async task to complete
-        // Task manager JobExecutor polls the database and executes tasks
-        waitForTaskCompletion(courtListId, 120000); // 2 minutes timeout
-        
-        // Verify status was still updated to SUCCESSFUL
-        // Note: WireMock verification removed as we're using static mappings
-        ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
-        assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        JsonNode statusBody = parseResponse(statusResponse);
-        assertThat(statusBody.get("publishStatus").asText()).isEqualTo("SUCCESSFUL");
+        assertThat(publishBody.get("publishStatus").asText()).isEqualTo("REQUESTED");
+        return UUID.fromString(publishBody.get("courtListId").asText());
     }
 
-    // Helper methods
-    private String createPublishRequestJson(UUID courtCentreId, String courtListType) {
-        return """
-            {
-                "courtCentreId": "%s",
-                "startDate": "2026-01-20",
-                "endDate": "2026-01-20",
-                "courtListType": "%s"
-            }
-            """.formatted(courtCentreId, courtListType);
-    }
-
-    private HttpEntity<String> createPublishHttpEntity(String json) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(new MediaType("application", "vnd.courtlistpublishing-service.publish.post+json"));
-        headers.set(CJSCPPUID_HEADER, INTEGRATION_TEST_USER_ID);
-        return new HttpEntity<>(json, headers);
-    }
-
-    private ResponseEntity<String> postPublishRequest(String requestJson) {
-        return http.exchange(PUBLISH_ENDPOINT, HttpMethod.POST, createPublishHttpEntity(requestJson), String.class);
-    }
-
-    private ResponseEntity<String> getStatusRequest(UUID courtListId) throws Exception {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(java.util.List.of(new MediaType("application", "vnd.courtlistpublishing-service.publish.get+json")));
-        
-        String url = GET_STATUS_ENDPOINT + "?courtListId=" + courtListId;
-
-        ResponseEntity<String> response = http.exchange(
-                url,
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class);
-        
-        JsonNode responseBody = parseResponse(response);
-        if (!responseBody.isArray()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-        
-        // If courtListId was provided, find the matching item; otherwise return first item or empty
-            String courtListIdStr = courtListId.toString();
-            JsonNode matchingItem = null;
-            for (JsonNode item : responseBody) {
-                if (courtListIdStr.equals(item.get("courtListId").asText())) {
-                    matchingItem = item;
-                    break;
-                }
-            }
-
-            if (matchingItem == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-            }
-
-            return ResponseEntity.ok()
-                    .contentType(new MediaType("application", "vnd.courtlistpublishing-service.publish.get+json"))
-                    .body(matchingItem.toString());
-    }
-
-    private JsonNode parseResponse(ResponseEntity<String> response) throws Exception {
-        return objectMapper.readTree(response.getBody());
-    }
-
-    /**
-     * Adds a WireMock stub so CaTH returns 500. Use only in tests that expect publish failure.
-     * Call {@link AbstractTest#resetWireMock()} in a finally block after the test so other tests get default mappings.
-     */
-    private void addCathFailureStub() throws Exception {
+    private void postWireMockMapping(String mappingJson, String label) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> response = http.exchange(
+                WIREMOCK_ADMIN_MAPPINGS,
+                HttpMethod.POST,
+                new HttpEntity<>(mappingJson, headers),
+                String.class);
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            throw new IllegalStateException("WireMock mapping failed (" + label + "): " + response.getStatusCode());
+        }
+        Thread.sleep(WIREMOCK_STUB_REGISTER_DELAY_MS);
+    }
+
+    private void addCathFailureStub() throws Exception {
         String mapping = """
             {
               "request": {
                 "method": "POST",
-                "urlPath": "/courtlistpublisher/publication"
+                "urlPath": "%s"
               },
               "response": {
                 "status": 500,
@@ -341,23 +154,10 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
               },
               "priority": 0
             }
-            """;
-        ResponseEntity<String> response = http.exchange(
-                WIREMOCK_MAPPINGS_URL,
-                HttpMethod.POST,
-                new HttpEntity<>(mapping, headers),
-                String.class);
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new IllegalStateException("Failed to add CaTH failure stub: " + response.getStatusCode());
-        }
-        Thread.sleep(500); // Allow WireMock to register the mapping before the app sends the request
+            """.formatted(CATH_PUBLICATION_URL_PATH);
+        postWireMockMapping(mapping, "CaTH failure");
     }
 
-    /**
-     * Adds a WireMock stub so the progression courtlistdata API returns a payload that, when transformed,
-     * fails JSON schema validation (e.g. hearing with null caseNumber → case with null caseUrn).
-     * Call {@link AbstractTest#resetWireMock()} in a finally block after the test.
-     */
     private void addSchemaInvalidPayloadStub() throws Exception {
         String mappingJson = """
             {
@@ -374,23 +174,9 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
               "priority": 0
             }
             """;
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<String> response = http.exchange(
-                WIREMOCK_MAPPINGS_URL,
-                HttpMethod.POST,
-                new HttpEntity<>(mappingJson, headers),
-                String.class);
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new IllegalStateException("Failed to add schema-invalid payload stub: " + response.getStatusCode());
-        }
-        Thread.sleep(500);
+        postWireMockMapping(mappingJson, "schema-invalid progression payload");
     }
 
-    /**
-     * Adds a WireMock stub so document-generator returns 500. Use only in tests that expect PDF failure.
-     * Call {@link AbstractTest#resetWireMock()} in a finally block after the test so other tests get default mappings.
-     */
     private void addDocumentGeneratorFailureStub() throws Exception {
         String mappingJson = """
             {
@@ -406,125 +192,6 @@ public class CourtListPublishAndPDFGenerationTaskIntegrationTest extends Abstrac
               "priority": 0
             }
             """;
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        ResponseEntity<String> response = http.exchange(
-                WIREMOCK_MAPPINGS_URL,
-                HttpMethod.POST,
-                new HttpEntity<>(mappingJson, headers),
-                String.class);
-        if (!response.getStatusCode().is2xxSuccessful()) {
-            throw new IllegalStateException("Failed to add document-generator failure stub: " + response.getStatusCode());
-        }
-        Thread.sleep(500);
-    }
-
-    /**
-     * Waits for task completion by polling the status endpoint until it's updated or timeout
-     */
-    private void waitForTaskCompletion(UUID courtListId, long timeoutMs) throws Exception {
-        long startTime = System.currentTimeMillis();
-        long pollInterval = 500; // Poll every 500ms
-        int pollCount = 0;
-        
-        log.info("Waiting for task completion for courtListId: {}", courtListId);
-        
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
-                if (statusResponse.getStatusCode().is2xxSuccessful()) {
-                    JsonNode statusBody = parseResponse(statusResponse);
-                    String publishStatusStr = statusBody.get("publishStatus").asText();
-                    log.debug("Poll #{}: Status = {}", pollCount, publishStatusStr);
-                    
-                    try {
-                        Status publishStatus = Status.valueOf(publishStatusStr);
-                        if (Status.SUCCESSFUL.equals(publishStatus) || Status.FAILED.equals(publishStatus)) {
-                            // Task has completed (either successfully or with failure)
-                            log.info("Task completed with status: {}", publishStatus);
-                            return;
-                        }
-                    } catch (IllegalArgumentException e) {
-                        log.warn("Invalid publish status value: {}", publishStatusStr);
-                    }
-                } else {
-                    log.debug("Poll #{}: Status endpoint returned {}", pollCount, statusResponse.getStatusCode());
-                }
-            } catch (Exception e) {
-                // Status endpoint might not be available yet, continue polling
-                if (pollCount % 10 == 0) { // Log every 5 seconds
-                    log.warn("Poll #{}: Error checking status - {}", pollCount, e.getMessage());
-                }
-            }
-            pollCount++;
-            Thread.sleep(pollInterval);
-        }
-        // Timeout reached - task may still be running
-        log.error("Timeout reached after {}ms. Task may still be running.", timeoutMs);
-        String finalStatusMsg = "timeout";
-        try {
-            ResponseEntity<String> finalStatus = getStatusRequest(courtListId);
-            if (finalStatus.getStatusCode().is2xxSuccessful()) {
-                JsonNode statusBody = parseResponse(finalStatus);
-                finalStatusMsg = "publishStatus=" + statusBody.get("publishStatus").asText()
-                        + ", fileStatus=" + (statusBody.has("fileStatus") ? statusBody.get("fileStatus").asText() : "n/a");
-                log.error("Final status: {}", finalStatusMsg);
-            }
-        } catch (Exception e) {
-            log.error("Could not get final status: {}", e.getMessage(), e);
-        }
-        throw new AssertionError("Task did not complete within " + timeoutMs + "ms. " + finalStatusMsg);
-    }
-
-    /**
-     * Waits for file completion by polling the status endpoint until fileStatus is SUCCESSFUL or FAILED.
-     * Needed because publishStatus can become SUCCESSFUL before fileStatus is updated.
-     */
-    private void waitForFileCompletion(UUID courtListId, long timeoutMs) throws Exception {
-        long startTime = System.currentTimeMillis();
-        long pollInterval = 500;
-        int pollCount = 0;
-
-        log.info("Waiting for file completion for courtListId: {}", courtListId);
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
-                if (statusResponse.getStatusCode().is2xxSuccessful()) {
-                    JsonNode statusBody = parseResponse(statusResponse);
-                    String fileStatusStr = statusBody.get("fileStatus").asText();
-                    log.debug("Poll #{}: fileStatus = {}", pollCount, fileStatusStr);
-                    try {
-                        Status fileStatus = Status.valueOf(fileStatusStr);
-                        if (Status.SUCCESSFUL.equals(fileStatus) || Status.FAILED.equals(fileStatus)) {
-                            log.info("File completed with status: {}", fileStatus);
-                            return;
-                        }
-                    } catch (IllegalArgumentException e) {
-                        log.warn("Invalid file status value: {}", fileStatusStr);
-                    }
-                }
-            } catch (Exception e) {
-                if (pollCount % 10 == 0) {
-                    log.warn("Poll #{}: Error checking file status - {}", pollCount, e.getMessage());
-                }
-            }
-            pollCount++;
-            Thread.sleep(pollInterval);
-        }
-
-        String finalStatusMsg = "timeout";
-        try {
-            ResponseEntity<String> finalStatus = getStatusRequest(courtListId);
-            if (finalStatus.getStatusCode().is2xxSuccessful()) {
-                JsonNode statusBody = parseResponse(finalStatus);
-                finalStatusMsg = "publishStatus=" + statusBody.get("publishStatus").asText()
-                        + ", fileStatus=" + (statusBody.has("fileStatus") ? statusBody.get("fileStatus").asText() : "n/a");
-                log.error("Final status: {}", finalStatusMsg);
-            }
-        } catch (Exception e) {
-            log.error("Could not get final status: {}", e.getMessage(), e);
-        }
-        throw new AssertionError("File did not complete within " + timeoutMs + "ms. " + finalStatusMsg);
+        postWireMockMapping(mappingJson, "document-generator failure");
     }
 }
