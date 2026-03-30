@@ -35,6 +35,10 @@ cath:
 taskmanager:
   schema:
     enabled: true
+
+# Cleanup: GET /api/court-list-publish/publish-status-cleanup (system user only).
+cleanup:
+  publish-status-cleanup-days: ${PUBLISH_STATUS_CLEANUP_DAYS:90}
 # Temporarily commented out due to SpringDoc compatibility issues with Spring Boot 4.0.0-M3
 # springdoc:
 #   packagesToScan: uk.gov.hmcts.cp.controllers

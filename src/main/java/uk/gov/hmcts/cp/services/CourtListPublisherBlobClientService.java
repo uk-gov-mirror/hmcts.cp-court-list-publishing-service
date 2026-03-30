@@ -35,7 +35,7 @@ public class CourtListPublisherBlobClientService {
      * @param fileId          identifier for the file (e.g. court list ID); used as blob name (with .pdf)
      */
     public void uploadPdf(InputStream fileInputStream, long fileSize, UUID fileId) {
-        String blobName = fileId + PDF_EXTENSION;
+        String blobName = buildPdfBlobName(fileId);
         try {
             LOGGER.info("Uploading PDF {} to container {}", blobName, blobContainerClient.getBlobContainerName());
             BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
@@ -60,9 +60,9 @@ public class CourtListPublisherBlobClientService {
                     try (InputStream in = stream) {
                         return in.readAllBytes();
                     } catch (Exception e) {
-                        LOGGER.error("Error reading PDF content for {}", fileId + PDF_EXTENSION, e);
+                        LOGGER.error("Error reading PDF content for {}", buildPdfBlobName(fileId), e);
                         throw new RuntimeException(
-                                "Azure storage error while reading PDF: " + fileId + PDF_EXTENSION + ". " + e.getMessage(), e);
+                                "Azure storage error while reading PDF: " + buildPdfBlobName(fileId) + ". " + e.getMessage(), e);
                     }
                 });
     }
@@ -72,7 +72,7 @@ public class CourtListPublisherBlobClientService {
      * Caller must close the stream when done. Returns empty if the blob does not exist.
      */
     public Optional<InputStream> openPdfStream(UUID fileId) {
-        String blobName = fileId + PDF_EXTENSION;
+        String blobName = buildPdfBlobName(fileId);
         try {
             BlobClient blobClient = blobContainerClient.getBlobClient(blobName);
             if (!blobClient.exists()) {
@@ -85,4 +85,12 @@ public class CourtListPublisherBlobClientService {
                 "Azure storage error while opening PDF stream: " + blobName + ". " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Blob name for a court list PDF.
+     */
+    public static String buildPdfBlobName(UUID fileId) {
+        return fileId + PDF_EXTENSION;
+    }
+
 }

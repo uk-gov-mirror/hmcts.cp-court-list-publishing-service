@@ -41,6 +41,9 @@ services:
     build:
       context: ..                # project root (so Docker has access to source)
       dockerfile: docker/Dockerfile
+    env_file:
+      # AZURE_STORAGE_ACCOUNT_NAME, AZURE_STORAGE_CONTAINER_NAME, AZURE_STORAGE_ACCOUNT_KEY (shared with host tests via integration-azurite-storage.env)
+      - integration-azurite-storage.env
     ports:
       - "${SERVER_PORT:-8082}:${SERVER_PORT:-8082}"
       - "8787:5005"
@@ -53,15 +56,6 @@ services:
       JAVA_TOOL_OPTIONS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
       SPRING_PROFILES_ACTIVE: integration
       AZURE_STORAGE_ENABLED: "true"
-      AZURE_STORAGE_CONTAINER_NAME: courtpublisher-blob-container
-      AZURE_STORAGE_ACCOUNT_NAME: "devstoreaccount1"
-      # ------------------------------------------------------------------
-      # Azurite default account key (Microsoft-published, not confidential).
-      # Documented for all devs: https://github.com/Azure/Azurite#default-storage-account
-      # Scanners match it as “generic API key” by entropy; safe to commit — see docker/README.md
-      # Override AZURE_STORAGE_ACCOUNT_KEY for a real Azure storage account.
-      # ------------------------------------------------------------------
-      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY:-Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==} # gitleaks:allow
       AZURE_STORAGE_BLOB_ENDPOINT: "http://azurite:10000/devstoreaccount1"
       AZURE_CLIENT_ID: "integration-test-client"
       AZURE_TENANT_ID: "integration-test-tenant"
@@ -76,6 +70,8 @@ services:
       COMMON_PLATFORM_QUERY_API_BASE_URL: "http://wiremock:8080"
       CATH_BASE_URL: "http://wiremock:8080"
       CATH_PUBLISHING_ENABLED: "true"
+      # Align cleanup retention with CleanupJobIntegrationTest (default in app is 90 days)
+      PUBLISH_STATUS_CLEANUP_DAYS: "7"
     depends_on:
       db:
         condition: service_healthy

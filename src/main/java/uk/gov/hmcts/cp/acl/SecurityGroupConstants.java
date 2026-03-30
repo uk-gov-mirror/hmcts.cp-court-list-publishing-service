@@ -35,4 +35,11 @@ public final class SecurityGroupConstants {
                 NON_CPS_PROSECUTORS, DISTRICT_JUDGE, SYSTEM_USERS
         };
     }
+
+    /**
+     * Groups allowed for system-user-only endpoints (e.g. publish-status-cleanup).
+     */
+    public static String[] getSystemUserOnlyRoles() {
+        return new String[]{ SYSTEM_USERS };
+    }
 }

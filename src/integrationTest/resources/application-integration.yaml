@@ -5,6 +5,7 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.jms.JmsAutoConfiguration
 
+# COMMON_PLATFORM_QUERY_API_BASE_URL can override base URL (e.g. in static blocks or env)
 common-platform-query-api:
   base-url: ${COMMON_PLATFORM_QUERY_API_BASE_URL:http://localhost:8080}
 
@@ -45,12 +46,6 @@ logging:
 # System user ID for reference data and document generator in integration tests
 courtlistpublishing:
   system-user-id: "ba4e97ab-2174-4fa2-abfe-3ac2bb04bc75"
-
-# Override common platform query API base URL for integration tests
-# Note: The test sets COMMON_PLATFORM_QUERY_API_BASE_URL system property in a static block
-# If the server is already running, you may need to restart it or set this as an environment variable
-common-platform-query-api:
-  base-url: ${COMMON_PLATFORM_QUERY_API_BASE_URL:http://localhost:8080}
 
 # CaTH endpoint configuration for integration tests
 # WireMock runs on the host machine, accessible via host.docker.internal
