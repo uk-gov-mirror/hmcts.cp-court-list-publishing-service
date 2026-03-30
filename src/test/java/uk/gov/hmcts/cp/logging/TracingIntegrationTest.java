@@ -6,7 +6,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import uk.gov.hmcts.cp.controllers.GlobalExceptionHandler;
-import uk.gov.hmcts.cp.filters.jwt.JWTFilter;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -38,7 +37,7 @@ import org.springframework.web.context.WebApplicationContext;
         "server.servlet.context-path="
 })
 @WebMvcTest(controllers = TracingProbeController.class,
-        excludeFilters = {@ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {JWTFilter.class,GlobalExceptionHandler.class})}
+        excludeFilters = {@ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {GlobalExceptionHandler.class})}
 )
 @ActiveProfiles("test")
 @Import(TestTracingConfig.class)
