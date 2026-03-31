@@ -40,7 +40,7 @@ public class CaTHService {
 
     private final Optional<AzureBlobService> azureBlobService;
 
-    private static final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
     public void sendCourtListToCaTH(CourtListDocument courtListDocument, final CourtListType courtListType, final LocalDate publishDate,
                                     String courtIdNumeric, Boolean isWelsh, UUID courtListId) {
@@ -67,14 +67,14 @@ public class CaTHService {
                     .type("LIST")
                     .listType(cathListInfo.cathCourtListType())
                     .courtId(courtIdFromRefData)
-                    .contentDate(now.toString())
+                    .contentDate(StandardCourtListTransformationService.toIsoDateTimeOrNull(publishDate.toString()))
                     .language(language)
                     .sensitivity(cathListInfo.sensitivity())
                     .displayFrom(now.toString())
                     .displayTo(getDisplayTo(publishDate))
                     .build();
 
-            final String payload = objectMapper.writeValueAsString(courtListDocument);
+            final String payload = OBJECT_MAPPER.writeValueAsString(courtListDocument);
 
             uploadPayloadToBlob(payload, courtListId);
 

@@ -12,9 +12,6 @@ import org.springframework.web.client.RestTemplate;
  */
 public final class DocumentGeneratorStub {
 
-    private static final String WIREMOCK_BASE_URL = System.getProperty("wiremock.baseUrl", "http://localhost:8089");
-    private static final String MAPPINGS_URL = WIREMOCK_BASE_URL + "/__admin/mappings";
-
     /** Path the app calls (PdfGenerationService.RENDER_PATH). */
     public static final String PATH = "/systemdocgenerator-command-api/command/api/rest/systemdocgenerator/render";
 
@@ -72,7 +69,7 @@ public final class DocumentGeneratorStub {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         ResponseEntity<String> response = REST.exchange(
-                MAPPINGS_URL,
+                AbstractTest.WIREMOCK_ADMIN_MAPPINGS,
                 HttpMethod.POST,
                 new HttpEntity<>(mappingJson, headers),
                 String.class);

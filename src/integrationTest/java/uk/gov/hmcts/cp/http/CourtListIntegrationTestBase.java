@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
@@ -42,7 +43,13 @@ abstract class CourtListIntegrationTestBase extends AbstractTest {
     protected static final String INTEGRATION_TEST_USER_ID = "integration-test-user-id";
     protected static final MediaType ACCEPT_FILES_DOWNLOAD =
             new MediaType("application", "vnd.courtlistpublishing-service.files.download+json");
-    protected static final long FILE_COMPLETION_TIMEOUT_MS = 120_000;
+
+    /** Shared integration timeouts (async task, WireMock polling, CaTH body capture). */
+    public static final long TASK_TIMEOUT_MS = 120_000;
+    public static final long WIREMOCK_POLL_MS = 250;
+    public static final long CATH_BODY_WAIT_MS = 20_000;
+
+    protected static final long FILE_COMPLETION_TIMEOUT_MS = TASK_TIMEOUT_MS;
 
     protected static final String JDBC_URL = System.getProperty("CP_CLP_INTEGRATION_JDBC_URL", "jdbc:postgresql://localhost:55432/courtlistpublishing");
     protected static final String JDBC_USER = System.getProperty("CP_CLP_DATASOURCE_USERNAME", "courtlistpublishing");
@@ -314,5 +321,47 @@ abstract class CourtListIntegrationTestBase extends AbstractTest {
             assertThat(in).isNotNull();
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    /**
+     * Publishes a court list; asserts 200, REQUESTED, and DB jobs row + publish row + {@code court_list_type}.
+     *
+     * @param courtListType same value for request JSON and DB (e.g. {@code ONLINE_PUBLIC.toString()})
+     */
+    protected UUID publishCourtListExpectingRequestedInDb(String courtListType) throws Exception {
+        UUID courtCentreId = UUID.randomUUID();
+        ResponseEntity<String> publishResponse =
+                postPublishRequest(createPublishRequestJson(courtCentreId, courtListType));
+        assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = parseResponse(publishResponse);
+        UUID courtListId = UUID.fromString(body.get("courtListId").asText());
+        assertThat(body.get("publishStatus").asText()).isEqualTo("REQUESTED");
+        try (Connection c = connection()) {
+            assertJobsTableHasRowForCourtListId(c, courtListId);
+            assertPublishStatusRow(c, courtListId, "REQUESTED", "REQUESTED", null);
+            assertCourtListType(c, courtListId, courtListType);
+        }
+        return courtListId;
+    }
+
+    /** After PDF generation completes: HTTP + DB assert SUCCESSFUL and file id matches {@code courtListId}. */
+    protected void awaitSuccessfulPdfAndAssertDb(UUID courtListId, String courtListTypeForDb) throws Exception {
+        waitForPDFGenerationFileCompletion(courtListId, FILE_COMPLETION_TIMEOUT_MS);
+        ResponseEntity<String> statusResponse = getStatusRequest(courtListId);
+        assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode status = parseResponse(statusResponse);
+        assertThat(status.get("publishStatus").asText()).isEqualTo("SUCCESSFUL");
+        assertThat(status.get("fileStatus").asText()).isEqualTo("SUCCESSFUL");
+        assertThat(status.get("fileId").asText()).isEqualTo(courtListId.toString());
+        try (Connection c = connection()) {
+            assertPublishStatusRow(c, courtListId, "SUCCESSFUL", "SUCCESSFUL", courtListId);
+            assertCourtListType(c, courtListId, courtListTypeForDb);
+        }
+    }
+
+    protected void assertDownloadedPdfMatchesExpectedText(UUID courtListId, String expectedTextContent) {
+        byte[] downloaded = downloadPdf(courtListId);
+        assertThat(downloaded).isNotNull().isNotEmpty();
+        assertThat(downloaded).isEqualTo(expectedTextContent.getBytes(StandardCharsets.UTF_8));
     }
 }

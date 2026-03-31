@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.services;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.models.*;
 import uk.gov.hmcts.cp.models.transformed.schema.*;
@@ -120,7 +121,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
         return Party.builder()
                 .partyRole(partyRole)
                 .individualDetails(individualDetails)
-                .offence(offences)
+                .offence(CollectionUtils.isEmpty(offences)? null: offences)
                 .organisationDetails(organisationDetails)
                 .subject(isSubjectOfApplication)
                 .build();
@@ -166,7 +167,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
             CaseSchema caseSchema = CaseSchema.builder()
                     .caseUrn(hearing.getCaseNumber())
                     .reportingRestriction(hasReportingRestriction)
-                    .reportingRestrictionDetails(reportingRestrictionDetails)
+                    .reportingRestrictionDetails(CollectionUtils.isEmpty(reportingRestrictionDetails)?null: reportingRestrictionDetails)
                     .caseSequenceIndicator(null) // Not available in source data
                     .party(parties)
                     .build();
@@ -182,7 +183,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
      */
     private List<String> getReportingRestrictionDetails(Defendant defendant) {
         if (defendant.getReportingRestrictions() == null || defendant.getReportingRestrictions().isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         List<String> labels = defendant.getReportingRestrictions().stream()
                 .map(ReportingRestriction::getLabel)
@@ -241,7 +242,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
         parties.add(Party.builder()
                 .partyRole(partyRole)
                 .individualDetails(individualDetails)
-                .offence(offences)
+                .offence(CollectionUtils.isEmpty(offences)? null: offences)
                 .organisationDetails(organisationDetails)
                 .subject(isSubjectOfApplication)
                 .build());
@@ -256,7 +257,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
 
     private List<OffenceSchema> transformOffenceSchemas(List<uk.gov.hmcts.cp.models.Offence> offences, Defendant defendant) {
         if (offences == null || offences.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         List<ReportingRestriction> restrictions = defendant != null ? defendant.getReportingRestrictions() : null;
         return transformOffenceSchemasFromRestrictions(offences, restrictions);
@@ -265,7 +266,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
     private List<OffenceSchema> transformOffenceSchemasFromRestrictions(
             List<uk.gov.hmcts.cp.models.Offence> offences, List<ReportingRestriction> reportingRestrictions) {
         if (offences == null || offences.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         return offences.stream()
                 .map(offence -> transformOffenceSchemaWithRestrictions(offence, reportingRestrictions))
@@ -276,7 +277,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
      * Normalises a date string for schema fields that require ISO 8601 date-time (e.g. pleaDate, convictionDate, adjournedDate).
      * If the value is date-only (YYYY-MM-DD), appends T00:00:00.000Z; otherwise returns the value unchanged (or null).
      */
-    private static String toIsoDateTimeOrNull(String dateStr) {
+    public static final String toIsoDateTimeOrNull(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
             return null;
         }

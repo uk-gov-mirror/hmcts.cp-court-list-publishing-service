@@ -66,16 +66,22 @@ class CaTHServiceTest {
         String capturedPayload = payloadCaptor.getValue();
         assertThat(capturedPayload).isNotNull().isNotEmpty();
 
-        // Verify metadata is set correctly
+        // Verify metadata is set correctly (DtsMeta is built inside sendCourtListToCaTH; capture it via the mocked publisher)
         DtsMeta capturedMeta = metaCaptor.getValue();
         assertThat(capturedMeta).isNotNull();
         assertThat(capturedMeta.getProvenance()).isEqualTo("COMMON_PLATFORM");
         assertThat(capturedMeta.getType()).isEqualTo("LIST");
+        assertThat(capturedMeta.getListType()).isEqualTo("MAGISTRATES_PUBLIC_LIST");
+        assertThat(capturedMeta.getSensitivity()).isEqualTo("PUBLIC");
         // When document has no courtIdNumeric, DtsMeta uses fallback "0"
         assertThat(capturedMeta.getCourtId()).isEqualTo("0");
+        assertThat(capturedMeta.getContentDate()).isEqualTo("2024-01-15T00:00:00.000Z");
         assertThat(capturedMeta.getDisplayTo()).isEqualTo("2024-01-15T23:59:00Z");
         // When isWelsh is null or false, language is ENGLISH
         assertThat(capturedMeta.getLanguage()).isEqualTo("ENGLISH");
+        // displayFrom is Instant.now() at publish time — assert ISO-8601 instant shape, not an exact value
+        assertThat(capturedMeta.getDisplayFrom())
+                .matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$");
     }
 
     @Test

@@ -19,7 +19,7 @@ import java.io.InputStream;
 @Slf4j
 public class JsonSchemaValidatorService {
 
-    private static final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
 
     /**
@@ -94,7 +94,7 @@ public class JsonSchemaValidatorService {
 
     private JSONObject documentToJsonObject(CourtListDocument document) {
         try {
-            String json = objectMapper.writeValueAsString(document);
+            String json = OBJECT_MAPPER.writeValueAsString(document);
             return new JSONObject(json);
         } catch (Exception e) {
             throw new SchemaValidationException("Failed to convert document to JSON: " + e.getMessage(), e);

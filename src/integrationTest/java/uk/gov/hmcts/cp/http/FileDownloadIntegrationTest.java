@@ -80,7 +80,7 @@ class FileDownloadIntegrationTest extends AbstractTest {
         UUID courtListId = UUID.fromString(publishBody.get("courtListId").asText());
 
         // Wait for async task to complete (PDF generation and upload)
-        waitForTaskCompletion(courtListId, 120000);
+        waitForTaskCompletion(courtListId, CourtListIntegrationTestBase.TASK_TIMEOUT_MS);
 
         // Verify status indicates success (file may have been uploaded)
         ResponseEntity<String> statusResponse = getStatusRequest(courtListId);

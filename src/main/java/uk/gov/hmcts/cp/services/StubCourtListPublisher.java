@@ -44,6 +44,18 @@ public class StubCourtListPublisher implements CourtListPublisher {
         log.info("StubCourtListPublisher: POST to {}", url);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
+        // Mirror PublishingService metadata headers so integration tests can validate DtsMeta-to-header mapping.
+        if (metadata != null) {
+            headers.set("x-provenance", metadata.getProvenance());
+            headers.set("x-type", metadata.getType());
+            headers.set("x-list-type", metadata.getListType());
+            headers.set("x-court-id", metadata.getCourtId());
+            headers.set("x-content-date", metadata.getContentDate());
+            headers.set("x-language", metadata.getLanguage());
+            headers.set("x-sensitivity", metadata.getSensitivity());
+            headers.set("x-display-from", metadata.getDisplayFrom());
+            headers.set("x-display-to", metadata.getDisplayTo());
+        }
         var response = restTemplate.exchange(
                 url,
                 org.springframework.http.HttpMethod.POST,

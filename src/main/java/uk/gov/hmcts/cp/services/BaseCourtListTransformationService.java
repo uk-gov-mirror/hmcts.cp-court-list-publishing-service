@@ -6,7 +6,9 @@ import uk.gov.hmcts.cp.models.transformed.CourtListDocument;
 import uk.gov.hmcts.cp.models.transformed.schema.*;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +19,11 @@ import java.util.List;
  */
 @Slf4j
 public abstract class BaseCourtListTransformationService {
+
+    /**
+     * Hearing date + start time from progression are wall-clock times in the UK (GMT/BST), not UTC.
+     */
+    private static final ZoneId COURT_LIST_TIME_ZONE = ZoneId.of("Europe/London");
 
     protected static final DateTimeFormatter ISO_DATE_TIME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
@@ -301,8 +308,8 @@ public abstract class BaseCourtListTransformationService {
             int minute = timeParts.length > 1 ? Integer.parseInt(timeParts[1]) : 0;
             int second = timeParts.length > 2 ? Integer.parseInt(timeParts[2]) : 0;
 
-            java.time.LocalDateTime dateTime = localDate.atTime(hour, minute, second);
-            return dateTime.atOffset(ZoneOffset.UTC).format(ISO_DATE_TIME_FORMATTER);
+            ZonedDateTime ukZoned = localDate.atTime(hour, minute, second).atZone(COURT_LIST_TIME_ZONE);
+            return ukZoned.withZoneSameInstant(ZoneOffset.UTC).format(ISO_DATE_TIME_FORMATTER);
         } catch (Exception e) {
             String safeDateForLog = date == null ? null : date.replace("\n", "").replace("\r", "");
             String safeTimeForLog = time == null ? null : time.replace("\n", "").replace("\r", "");
