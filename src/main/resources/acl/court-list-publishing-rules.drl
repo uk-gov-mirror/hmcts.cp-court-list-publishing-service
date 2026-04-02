@@ -1,14 +1,23 @@
 import uk.gov.moj.cpp.authz.drools.Outcome;
 import uk.gov.moj.cpp.authz.drools.Action;
 import uk.gov.hmcts.cp.acl.SecurityGroupConstants;
+import uk.gov.hmcts.cp.acl.PermissionConstants;
 
 global uk.gov.moj.cpp.authz.http.providers.UserAndGroupProvider userAndGroupProvider;
+
+rule "Allow – court-list-publish post (publish-court-list only)"
+when
+  $o: Outcome()
+  $a: Action(name == "courtlistpublishing-service.publish.post")
+  eval(userAndGroupProvider.hasPermission($a, PermissionConstants.accessToPublishCourtListPermissions()))
+then
+  $o.setSuccess(true);
+end
 
 rule "Allow – court-list-publish and download"
 when
   $o: Outcome()
-  $a: Action(name == "courtlistpublishing-service.publish.post" ||
-             name == "courtlistpublishing-service.publish.get" ||
+  $a: Action(name == "courtlistpublishing-service.publish.get" ||
              name == "courtlistpublishing-service.files.download" ||
              name == "courtlistpublishing-service.download.post")
   eval(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups($a, SecurityGroupConstants.getPublishingRoles()))

@@ -150,6 +150,15 @@ class StandardCourtListTransformationServiceTest {
     }
 
     @Test
+    void convertToIsoDateTime_shouldInterpretLocalTimeAsUkWallClockAndExpressInUtc() {
+        BaseCourtListTransformationService base = transformationService;
+        // April 2026: BST (UTC+1); 10:00 Europe/London -> 09:00 UTC
+        assertThat(base.convertToIsoDateTime("10:00", "2026-04-24")).isEqualTo("2026-04-24T09:00:00.000Z");
+        // January: GMT; 10:00 London -> 10:00 UTC
+        assertThat(base.convertToIsoDateTime("10:00", "2026-01-05")).isEqualTo("2026-01-05T10:00:00.000Z");
+    }
+
+    @Test
     void transform_shouldSetSubjectTrueWhenCourtApplicationSubjectMatchesDefendant() {
         CourtApplicationParty subjectParty = CourtApplicationParty.builder()
                 .id("3eebde5d-f238-486a-b181-046b3dd9be93")

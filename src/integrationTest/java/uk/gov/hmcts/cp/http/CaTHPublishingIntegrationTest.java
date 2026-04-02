@@ -6,7 +6,9 @@ import static uk.gov.hmcts.cp.openapi.model.CourtListType.ONLINE_PUBLIC;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -18,11 +20,13 @@ import org.springframework.http.ResponseEntity;
 
 /** Asserts the CaTH POST body captured by WireMock after an ONLINE_PUBLIC publish completes. */
 public class CaTHPublishingIntegrationTest extends CourtListIntegrationTestBase {
+    private static final String EXPECTED_CONTENT_DATE_HEADER = "2026-01-20T00:00:00.000Z";
+    private static final String EXPECTED_FIRST_SITTING_START = "2026-01-05T10:30:00.000Z";
 
     @Test
     void publishOnlinePublic_shouldPostTransformedCourtListDocumentToCaTH_withExpectedPartiesAndMetadata() throws Exception {
         UUID courtCentreId = UUID.randomUUID();
-        int cathPostsBefore = listCaTHPublicationBodies().size();
+        int cathPostsBefore = listCaTHPublicationRequests().size();
 
         ResponseEntity<String> publishResponse = postPublishRequest(createPublishRequestJson(courtCentreId, ONLINE_PUBLIC.toString()));
         assertThat(publishResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -30,7 +34,9 @@ public class CaTHPublishingIntegrationTest extends CourtListIntegrationTestBase 
         UUID courtListId = UUID.fromString(parseResponse(publishResponse).get("courtListId").asText());
         waitForTaskCompletion(courtListId, TASK_TIMEOUT_MS);
 
-        JsonNode cathPayload = objectMapper.readTree(waitForAdditionalCaTHBody(cathPostsBefore, CATH_BODY_WAIT_MS));
+        JsonNode cathRequest = waitForAdditionalCaTHRequest(cathPostsBefore, CATH_BODY_WAIT_MS);
+        String rawBody = requestBodyAsString(cathRequest);
+        JsonNode cathPayload = objectMapper.readTree(rawBody);
 
         assertThat(cathPayload.path("document").path("publicationDate").asText()).isNotBlank();
         assertThat(prosecutingAuthorityOrganisationName(cathPayload)).contains("CITYPF");
@@ -39,24 +45,32 @@ public class CaTHPublishingIntegrationTest extends CourtListIntegrationTestBase 
         JsonNode firstRoom = cathPayload.path("courtLists").path(0).path("courtHouse").path("courtRoom").path(0);
         assertThat(firstRoom.path("courtRoomName").asText()).isEqualTo("Courtroom 01");
 
-        JsonNode firstCase = firstRoom.path("session").path(0).path("sittings").path(0).path("hearing").path(0).path("case").path(0);
+        JsonNode firstSitting = firstRoom.path("session").path(0).path("sittings").path(0);
+        assertThat(firstSitting.path("sittingStart").asText()).isEqualTo(EXPECTED_FIRST_SITTING_START);
+
+        JsonNode firstCase = firstSitting.path("hearing").path(0).path("case").path(0);
         assertThat(firstCase.path("caseUrn").asText()).isEqualTo("EK121443449");
+
+        String contentDate = firstHeader(cathRequest, "x-content-date");
+        assertThat(contentDate)
+                .withFailMessage("x-content-date missing from WireMock request. Request=%s", cathRequest)
+                .isEqualTo(EXPECTED_CONTENT_DATE_HEADER);
     }
 
-    private String waitForAdditionalCaTHBody(int previousCount, long timeoutMs) throws Exception {
+    private JsonNode waitForAdditionalCaTHRequest(int previousCount, long timeoutMs) throws Exception {
         long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
-            List<String> bodies = listCaTHPublicationBodies();
-            if (bodies.size() > previousCount) {
-                return bodies.getLast();
+            List<JsonNode> requests = listCaTHPublicationRequests();
+            if (requests.size() > previousCount) {
+                return requests.getLast();
             }
             Thread.sleep(WIREMOCK_POLL_MS);
         }
-        List<String> bodies = listCaTHPublicationBodies();
-        throw new AssertionError("No new CaTH POST after publish. was=" + previousCount + ", now=" + bodies.size());
+        List<JsonNode> requests = listCaTHPublicationRequests();
+        throw new AssertionError("No new CaTH POST after publish. was=" + previousCount + ", now=" + requests.size());
     }
 
-    private List<String> listCaTHPublicationBodies() throws Exception {
+    private List<JsonNode> listCaTHPublicationRequests() throws Exception {
         ResponseEntity<String> admin = http.getForEntity(WIREMOCK_ADMIN_REQUESTS, String.class);
         assertThat(admin.getStatusCode().is2xxSuccessful()).isTrue();
 
@@ -70,7 +84,7 @@ public class CaTHPublishingIntegrationTest extends CourtListIntegrationTestBase 
             }
         }
 
-        List<String> bodies = new ArrayList<>();
+        List<JsonNode> requestsOut = new ArrayList<>();
         for (JsonNode entry : requests) {
             JsonNode req = entry.has("request") ? entry.get("request") : entry;
             if (!"POST".equalsIgnoreCase(req.path("method").asText(""))) {
@@ -82,10 +96,57 @@ public class CaTHPublishingIntegrationTest extends CourtListIntegrationTestBase 
             }
             String body = requestBodyAsString(req);
             if (body != null && !body.isBlank()) {
-                bodies.add(body);
+                requestsOut.add(req);
             }
         }
-        return bodies;
+        return requestsOut;
+    }
+
+    private static String firstHeader(JsonNode req, String headerName) {
+        JsonNode headers = req.path("headers");
+        if (!headers.isObject()) {
+            return null;
+        }
+
+        JsonNode direct = headers.get(headerName);
+        if (direct != null) {
+            String parsed = parseHeaderNodeValue(direct);
+            if (parsed != null && !parsed.isBlank()) {
+                return parsed;
+            }
+        }
+
+        Iterator<Map.Entry<String, JsonNode>> it = headers.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, JsonNode> e = it.next();
+            if (e.getKey().equalsIgnoreCase(headerName)) {
+                return parseHeaderNodeValue(e.getValue());
+            }
+        }
+        return null;
+    }
+
+    private static String parseHeaderNodeValue(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isTextual()) {
+            return node.asText(null);
+        }
+        if (node.isArray() && !node.isEmpty()) {
+            return node.get(0).asText(null);
+        }
+        if (node.isObject()) {
+            JsonNode values = node.get("values");
+            if (values != null && values.isArray() && !values.isEmpty()) {
+                return values.get(0).asText(null);
+            }
+            JsonNode value = node.get("value");
+            if (value != null && !value.isNull()) {
+                return value.asText(null);
+            }
+        }
+        return node.asText(null);
     }
 
     private static String requestBodyAsString(JsonNode req) {

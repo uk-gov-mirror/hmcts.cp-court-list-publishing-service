@@ -2,26 +2,10 @@ package uk.gov.hmcts.cp.acl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.COURT_ADMINISTRATORS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.COURT_ASSOCIATE;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.COURT_CLERKS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.CPS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.CROWN_COURT_ADMIN;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.DISTRICT_JUDGE;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.LEGAL_ADVISERS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.LISTING_OFFICERS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.NON_CPS_PROSECUTORS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.POLICE_ADMIN;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.PROBATION_ADMIN;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.SYSTEM_USERS;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.VICTIMS_WITNESS_CARE_ADMIN;
-import static uk.gov.hmcts.cp.acl.SecurityGroupConstants.YOUTH_OFFENDING_SERVICE_ADMIN;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
 import org.kie.api.builder.KieBuilder;
@@ -88,21 +72,12 @@ class CourtListPublishingAccessControlTest {
     @Test
     void publishPost_shouldAllowAuthorisedUser() {
         Action action = new Action(PUBLISH_POST, Map.of());
-        given(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
-                SecurityGroupConstants.getPublishingRoles())).willReturn(true);
+        given(userAndGroupProvider.hasPermission(action,
+                PermissionConstants.accessToPublishCourtListPermissions())).willReturn(true);
 
         Outcome outcome = evaluateRule(action);
 
         assertThat(outcome.isSuccess()).isTrue();
-    }
-
-    @Test
-    void publishPost_shouldDenyUnauthorisedUser() {
-        Action action = new Action(PUBLISH_POST, Map.of());
-
-        Outcome outcome = evaluateRule(action);
-
-        assertThat(outcome.isSuccess()).isFalse();
     }
 
     // --- publish.get ---
@@ -239,24 +214,14 @@ class CourtListPublishingAccessControlTest {
         assertThat(outcome.isSuccess()).isFalse();
     }
 
-    // --- verify each publishing role individually grants access ---
-
-    @ParameterizedTest
-    @ValueSource(strings = {
-            LISTING_OFFICERS, COURT_CLERKS, LEGAL_ADVISERS, CROWN_COURT_ADMIN,
-            COURT_ADMINISTRATORS, YOUTH_OFFENDING_SERVICE_ADMIN, CPS, PROBATION_ADMIN,
-            VICTIMS_WITNESS_CARE_ADMIN, POLICE_ADMIN, COURT_ASSOCIATE,
-            NON_CPS_PROSECUTORS, DISTRICT_JUDGE, SYSTEM_USERS
-    })
-    void publishPost_shouldAllowEachAuthorisedGroup(String group) {
+    @Test
+    void publishPost_shouldDenyUnauthorisedUser() {
         Action action = new Action(PUBLISH_POST, Map.of());
-        given(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
-                SecurityGroupConstants.getPublishingRoles())).willReturn(true);
+        given(userAndGroupProvider.hasPermission(action,
+                PermissionConstants.accessToPublishCourtListPermissions())).willReturn(false);
 
         Outcome outcome = evaluateRule(action);
 
-        assertThat(outcome.isSuccess())
-                .as("Group '%s' should be allowed to publish", group)
-                .isTrue();
+        assertThat(outcome.isSuccess()).isFalse();
     }
 }

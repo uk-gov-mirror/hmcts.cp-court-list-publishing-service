@@ -6,6 +6,7 @@ package uk.gov.hmcts.cp.acl;
  */
 public final class SecurityGroupConstants {
 
+    public static final String PUBLISH_COURT_LIST = "Publish Court List";
     public static final String LISTING_OFFICERS = "Listing Officers";
     public static final String COURT_CLERKS = "Court Clerks";
     public static final String LEGAL_ADVISERS = "Legal Advisers";

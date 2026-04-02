@@ -121,6 +121,42 @@ class OnlinePublicCourtListTransformationServiceTest {
     }
 
     @Test
+    void transform_shouldMapDefendantOrganisationNameToPartyOrganisationDetailsForCaTH() throws Exception {
+        Defendant defendant = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst().getDefendants().getFirst();
+        defendant.setOrganisationName("OrganisationName0");
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        Party defendantParty = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst().getCaseList().getFirst()
+                .getParty().getFirst();
+        assertThat(defendantParty.getPartyRole()).isEqualTo("DEFENDANT");
+        assertThat(defendantParty.getOrganisationDetails()).isNotNull();
+        assertThat(defendantParty.getOrganisationDetails().getOrganisationName()).isEqualTo("OrganisationName0");
+        assertThat(defendantParty.getIndividualDetails()).isNotNull();
+        assertThat(defendantParty.getIndividualDetails().getIndividualForenames()).isEqualTo("Tommie");
+    }
+
+    @Test
+    void transform_shouldMapOrganisationOnlyDefendantToOrganisationDetailsWithoutIndividualDetails() throws Exception {
+        Defendant defendant = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst().getDefendants().getFirst();
+        defendant.setFirstName(null);
+        defendant.setSurname(null);
+        defendant.setOrganisationName("Acme Corp Ltd");
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        Party defendantParty = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst().getCaseList().getFirst()
+                .getParty().getFirst();
+        assertThat(defendantParty.getIndividualDetails()).isNull();
+        assertThat(defendantParty.getOrganisationDetails()).isNotNull();
+        assertThat(defendantParty.getOrganisationDetails().getOrganisationName()).isEqualTo("Acme Corp Ltd");
+    }
+
+    @Test
     void transform_shouldCopyReferenceDataFieldsFromPayloadToDocument() throws Exception {
         // Given - payload enriched with ouCode/courtId from getCourtCenterDataByCourtName
         payload.setOuCode("B01LY00");

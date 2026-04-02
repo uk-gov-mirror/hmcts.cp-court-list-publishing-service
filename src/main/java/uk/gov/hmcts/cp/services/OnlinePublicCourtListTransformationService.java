@@ -1,11 +1,13 @@
 package uk.gov.hmcts.cp.services;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+import static org.apache.commons.collections.CollectionUtils.isEmpty;
+
 import uk.gov.hmcts.cp.models.*;
 import uk.gov.hmcts.cp.models.transformed.schema.*;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -22,15 +24,29 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
     }
 
     @Override
-    protected AddressSchema buildVenueAddressFromPayload(CourtListPayload payload) {
-        List<String> lines = new ArrayList<>();
-        if (isNonBlank(payload.getAddress1())) lines.add(payload.getAddress1().trim());
-        if (isNonBlank(payload.getAddress2())) lines.add(payload.getAddress2().trim());
-        if (isNonBlank(payload.getAddress3())) lines.add(payload.getAddress3().trim());
-        if (isNonBlank(payload.getAddress4())) lines.add(payload.getAddress4().trim());
-        if (isNonBlank(payload.getAddress5())) lines.add(payload.getAddress5().trim());
+    protected AddressSchema buildVenueAddressFromPayload(final CourtListPayload payload) {
+        final List<String> lines = new ArrayList<>();
+        if (isNonBlank(payload.getAddress1())) {
+            lines.add(payload.getAddress1().trim());
+        }
 
-        String postcode = payload.getPostcode() != null ? payload.getPostcode().trim() : "";
+        if (isNonBlank(payload.getAddress2())) {
+            lines.add(payload.getAddress2().trim());
+        }
+
+        if (isNonBlank(payload.getAddress3())) {
+            lines.add(payload.getAddress3().trim());
+        }
+
+        if (isNonBlank(payload.getAddress4())) {
+            lines.add(payload.getAddress4().trim());
+        }
+
+        if (isNonBlank(payload.getAddress5())) {
+            lines.add(payload.getAddress5().trim());
+        }
+
+        final String postcode = payload.getPostcode() != null ? payload.getPostcode().trim() : "";
         return AddressSchema.builder()
                 .line(lines.isEmpty() ? new ArrayList<>() : lines)
                 .postCode(postcode)
@@ -38,17 +54,17 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
     }
 
     @Override
-    protected CourtHouse buildCourtHouse(List<CourtRoomSchema> courtRooms, CourtListPayload payload) {
+    protected CourtHouse buildCourtHouse(final List<CourtRoomSchema> courtRooms, final CourtListPayload payload) {
         return CourtHouse.builder()
                 .courtRoom(courtRooms)
                 .build();
     }
 
     @Override
-    protected HearingSchema transformHearing(Hearing hearing) {
-        ApplicationTransformResult applicationTransformResult = transformApplications(hearing);
-        List<Application> applications = applicationTransformResult.applications();
-        boolean hasApplications = applications != null && !applications.isEmpty();
+    protected HearingSchema transformHearing(final Hearing hearing) {
+        final ApplicationTransformResult applicationTransformResult = transformApplications(hearing);
+        final List<Application> applications = applicationTransformResult.applications();
+        final boolean hasApplications = applications != null && !applications.isEmpty();
 
         List<CaseSchema> cases;
         if (hasApplications) {
@@ -61,7 +77,7 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
             return null;
         }
 
-        List<String> channels = new ArrayList<>();
+        final List<String> channels = new ArrayList<>();
         return HearingSchema.builder()
                 .hearingType(hearing.getHearingType())
                 .caseList(cases)
@@ -110,31 +126,31 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
         return Party.builder()
                 .partyRole(partyRole)
                 .individualDetails(individualDetails)
-                .offence(offences)
+                .offence(isEmpty(offences) ? null: offences)
                 .organisationDetails(organisationDetails)
                 .subject(isSubjectOfApplication)
                 .build();
     }
 
-    private String convertDateOfBirthToIso(String dob) {
+    private String convertDateOfBirthToIso(final String dob) {
         if (dob == null || dob.trim().isEmpty()) {
             return null;
         }
         try {
-            java.time.LocalDate date = java.time.LocalDate.parse(dob.trim(), java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.UK));
+            final java.time.LocalDate date = java.time.LocalDate.parse(dob.trim(), java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy", java.util.Locale.UK));
             return date.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (Exception e) {
+        } catch (final Exception e) {
             try {
-                java.time.LocalDate date = java.time.LocalDate.parse(dob.trim(), java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.UK));
+                final java.time.LocalDate date = java.time.LocalDate.parse(dob.trim(), java.time.format.DateTimeFormatter.ofPattern("d MMMM yyyy", java.util.Locale.UK));
                 return date.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
-            } catch (Exception e2) {
+            } catch (final Exception e2) {
                 log.warn("Failed to parse date of birth", e);
                 return null;
             }
         }
     }
 
-    private Integer convertAge(String age) {
+    private Integer convertAge(final String age) {
         if (age == null || age.trim().isEmpty()) {
             return null;
         }
@@ -151,12 +167,27 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
             return null;
         }
         List<String> lines = new ArrayList<>();
-        if (isNonBlank(address.getAddress1())) lines.add(address.getAddress1().trim());
-        if (isNonBlank(address.getAddress2())) lines.add(address.getAddress2().trim());
-        if (isNonBlank(address.getAddress3())) lines.add(address.getAddress3().trim());
-        if (isNonBlank(address.getAddress4())) lines.add(address.getAddress4().trim());
-        if (isNonBlank(address.getAddress5())) lines.add(address.getAddress5().trim());
-        String postcode = address.getPostcode() != null ? address.getPostcode().trim() : null;
+        if (isNonBlank(address.getAddress1())) {
+            lines.add(address.getAddress1().trim());
+        }
+
+        if (isNonBlank(address.getAddress2())) {
+            lines.add(address.getAddress2().trim());
+        }
+
+        if (isNonBlank(address.getAddress3())) {
+            lines.add(address.getAddress3().trim());
+        }
+
+        if (isNonBlank(address.getAddress4())) {
+            lines.add(address.getAddress4().trim());
+        }
+
+        if (isNonBlank(address.getAddress5())) {
+            lines.add(address.getAddress5().trim());
+        }
+
+        final String postcode = address.getPostcode() != null ? address.getPostcode().trim() : null;
         return AddressSchema.builder()
                 .line(lines.isEmpty() ? new ArrayList<>() : lines)
                 .postCode(postcode)
@@ -164,9 +195,9 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
     }
 
     private List<OffenceSchema> transformApplicationPartyOffencesForPublicList(
-            List<uk.gov.hmcts.cp.models.Offence> offences, List<ReportingRestriction> reportingRestrictions) {
+            final List<uk.gov.hmcts.cp.models.Offence> offences, final List<ReportingRestriction> reportingRestrictions) {
         if (offences == null || offences.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         List<String> details = null;
         Boolean restriction = false;
@@ -205,11 +236,11 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
         return Collections.singletonList(application);
     }
 
-    private boolean hasApplicationPartyReportingRestriction(CourtApplication courtApplication) {
+    private boolean hasApplicationPartyReportingRestriction(final CourtApplication courtApplication) {
         if (courtApplication == null) {
             return false;
         }
-        CourtApplicationParty applicant = courtApplication.getApplicant();
+        final CourtApplicationParty applicant = courtApplication.getApplicant();
         if (applicant == null || applicant.getReportingRestrictions() == null || applicant.getReportingRestrictions().isEmpty()) {
             return false;
         }
@@ -217,15 +248,15 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
                 .anyMatch(r -> r != null && isNonBlank(r.getLabel()));
     }
 
-    private List<CaseSchema> transformCases(Hearing hearing, String subjectPartyId) {
-        List<CaseSchema> cases = new ArrayList<>();
+    private List<CaseSchema> transformCases(final Hearing hearing, final String subjectPartyId) {
+        final List<CaseSchema> cases = new ArrayList<>();
 
         if (hearing.getDefendants() == null || hearing.getDefendants().isEmpty()) {
             return cases;
         }
 
-        for (Defendant defendant : hearing.getDefendants()) {
-            List<Party> parties = new ArrayList<>();
+        for (final Defendant defendant : hearing.getDefendants()) {
+            final List<Party> parties = new ArrayList<>();
 
             // Only include basic individual details (name only for public lists)
             IndividualDetails individualDetails = null;
@@ -236,31 +267,41 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
                         .build();
             }
 
-            // Offence list per schema (offenceTitle only for public lists)
-            List<OffenceSchema> offences = transformOffencesForPublicList(defendant.getOffences(), defendant);
+            // Organisation defendants (and org name alongside individuals): mirrors StandardCourtListTransformationService / CaTH schema
+            OrganisationDetails organisationDetails = null;
+            if (isNonBlank(defendant.getOrganisationName())) {
+                organisationDetails = OrganisationDetails.builder()
+                        .organisationName(defendant.getOrganisationName().trim())
+                        .organisationAddress(transformAddressSchemaFromDefendant(defendant.getAddress()))
+                        .build();
+            }
 
-            boolean isSubjectOfApplication = isNonBlank(defendant.getId())
+            // Offence list per schema (offenceTitle only for public lists)
+            final List<OffenceSchema> offences = transformOffencesForPublicList(defendant.getOffences(), defendant);
+
+            final boolean isSubjectOfApplication = isNonBlank(defendant.getId())
                     && subjectPartyId != null
                     && subjectPartyId.equals(defendant.getId().trim());
 
             parties.add(Party.builder()
                     .partyRole("DEFENDANT")
                     .individualDetails(individualDetails)
-                    .offence(offences)
+                    .offence(isEmpty(offences)? null : offences)
+                    .organisationDetails(organisationDetails)
                     .subject(isSubjectOfApplication)
                     .build());
 
-            Party prosecutorParty = createProsecutorParty(hearing.getProsecutorType());
+            final Party prosecutorParty = createProsecutorParty(hearing.getProsecutorType());
             if (prosecutorParty != null) {
                 parties.add(prosecutorParty);
             }
 
-            List<String> reportingRestrictionDetails = getReportingRestrictionDetails(defendant);
-            boolean hasReportingRestriction = hasReportingRestriction(defendant);
+            final List<String> reportingRestrictionDetails = getReportingRestrictionDetails(defendant);
+            final boolean hasReportingRestriction = hasReportingRestriction(defendant);
             cases.add(CaseSchema.builder()
                     .caseUrn(hearing.getCaseNumber())
                     .reportingRestriction(hasReportingRestriction)
-                    .reportingRestrictionDetails(reportingRestrictionDetails)
+                    .reportingRestrictionDetails(isEmpty(reportingRestrictionDetails)? null: reportingRestrictionDetails)
                     .party(parties)
                     .build());
         }
@@ -271,11 +312,11 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
     /**
      * Resolves reporting restriction details from the defendant's reportingRestrictions array (labels).
      */
-    private List<String> getReportingRestrictionDetails(Defendant defendant) {
+    private List<String> getReportingRestrictionDetails(final Defendant defendant) {
         if (defendant.getReportingRestrictions() == null || defendant.getReportingRestrictions().isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
-        List<String> labels = defendant.getReportingRestrictions().stream()
+        final List<String> labels = defendant.getReportingRestrictions().stream()
                 .map(ReportingRestriction::getLabel)
                 .filter(label -> label != null && !label.trim().isEmpty())
                 .map(String::trim)
@@ -283,7 +324,7 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
         return labels.isEmpty() ? null : labels;
     }
 
-    private boolean hasReportingRestriction(Defendant defendant) {
+    private boolean hasReportingRestriction(final Defendant defendant) {
         if (defendant.getReportingRestrictions() == null || defendant.getReportingRestrictions().isEmpty()) {
             return false;
         }
@@ -295,9 +336,9 @@ public class OnlinePublicCourtListTransformationService extends BaseCourtListTra
      * Transform offences for public list: schema only requires offenceTitle per offence item;
      * reporting restriction fields are populated from the defendant when present.
      */
-    private List<OffenceSchema> transformOffencesForPublicList(List<uk.gov.hmcts.cp.models.Offence> offences, Defendant defendant) {
+    private List<OffenceSchema> transformOffencesForPublicList(final List<uk.gov.hmcts.cp.models.Offence> offences, final Defendant defendant) {
         if (offences == null || offences.isEmpty()) {
-            return null;
+            return Collections.emptyList();
         }
         List<String> offenceReportingDetails = null;
         Boolean offenceReportingRestriction = null;
