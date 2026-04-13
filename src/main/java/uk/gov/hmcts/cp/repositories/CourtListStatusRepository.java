@@ -4,7 +4,6 @@ import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -32,8 +31,8 @@ public interface CourtListStatusRepository extends JpaRepository<CourtListStatus
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishDate(
             UUID courtCentreId, LocalDate publishDate);
 
-    @Query("SELECT e FROM CourtListStatusEntity e WHERE e.lastUpdated < :cutoff")
-    List<CourtListStatusEntity> findByLastUpdatedBefore(@Param("cutoff") Instant cutoff);
+    @Query("SELECT e FROM CourtListStatusEntity e WHERE e.publishDate < :cutoff")
+    List<CourtListStatusEntity> findByPublishDateBefore(@Param("cutoff") LocalDate cutoff);
 
 }
 

@@ -34,7 +34,6 @@ import org.springframework.web.client.RestTemplate;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisherBlobClientService;
 
-/** Cleanup via GET {@code /api/court-list-publish/publish-status-cleanup}; same stack as other HTTP integration tests. */
 public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
 
     private static final String BASE_URL = System.getProperty("app.baseUrl", "http://localhost:8082/courtlistpublishing-service");
@@ -82,9 +81,10 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
         UUID courtListId1 = UUID.randomUUID();
         UUID courtListId2 = UUID.randomUUID();
         Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
+        LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
 
-        insertPublishStatusRow(courtListId1, oldInstant, courtListId1);
-        insertPublishStatusRow(courtListId2, oldInstant, courtListId2);
+        insertPublishStatusRow(courtListId1, oldInstant, oldPublishDate, courtListId1);
+        insertPublishStatusRow(courtListId2, oldInstant, oldPublishDate, courtListId2);
         uploadPdfAndCathJson(courtListId1);
         uploadPdfAndCathJson(courtListId2);
 
@@ -105,9 +105,14 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
     void cleanupOldData_shouldNotDeleteRecentRecords_orTheirBlobs() throws Exception {
         UUID oldCourtListId = UUID.randomUUID();
         UUID recentCourtListId = UUID.randomUUID();
+        Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
+        Instant recentInstant = Instant.now();
 
-        insertPublishStatusRow(oldCourtListId, Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS), oldCourtListId);
-        insertPublishStatusRow(recentCourtListId, Instant.now(), recentCourtListId);
+        LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
+        LocalDate recentPublishDate = LocalDate.now();
+
+        insertPublishStatusRow(oldCourtListId, oldInstant, oldPublishDate, oldCourtListId);
+        insertPublishStatusRow(recentCourtListId, recentInstant, recentPublishDate, recentCourtListId);
         uploadPdfAndCathJson(oldCourtListId);
         uploadPdfAndCathJson(recentCourtListId);
 
@@ -122,7 +127,9 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
     @Test
     void cleanupOldData_shouldNotDeleteRecord_whenBlobDoesNotExist() throws Exception {
         UUID courtListId = UUID.randomUUID();
-        insertPublishStatusRow(courtListId, Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS), courtListId);
+        Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
+        LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
+        insertPublishStatusRow(courtListId, oldInstant, oldPublishDate, courtListId);
 
         invokePublishStatusCleanup();
 
@@ -132,7 +139,9 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
     @Test
     void cleanupOldData_shouldDeleteRecord_whenOnlyPdfExists_cathJsonNotInStorage() throws Exception {
         UUID courtListId = UUID.randomUUID();
-        insertPublishStatusRow(courtListId, Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS), courtListId);
+        Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
+        LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
+        insertPublishStatusRow(courtListId, oldInstant, oldPublishDate, courtListId);
         byte[] pdfContent = ("pdf-only-" + courtListId).getBytes(StandardCharsets.UTF_8);
         BLOB_CONTAINER.getBlobClient(CourtListPublisherBlobClientService.buildPdfBlobName(courtListId)).upload(
                 new ByteArrayInputStream(pdfContent), pdfContent.length, true);
@@ -152,9 +161,9 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
     }
 
-    private void insertPublishStatusRow(UUID courtListId, Instant lastUpdated, UUID fileId) throws SQLException {
+    private void insertPublishStatusRow(UUID courtListId, Instant lastUpdated, LocalDate publishDate, UUID fileId)
+            throws SQLException {
         UUID courtCentreId = UUID.randomUUID();
-        LocalDate publishDate = LocalDate.now();
         try (Connection c = connection();
                 PreparedStatement ps = c.prepareStatement(
                         "INSERT INTO court_list_publish_status (court_list_id, court_centre_id, publish_status, file_status, court_list_type, last_updated, publish_date, file_id) VALUES (?,?,?,?,?,?,?,?)")) {

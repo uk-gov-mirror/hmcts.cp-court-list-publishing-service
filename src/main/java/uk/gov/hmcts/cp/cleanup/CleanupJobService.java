@@ -9,8 +9,7 @@ import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisherBlobClientService;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,8 +32,8 @@ public class CleanupJobService {
             return;
         }
         log.info("Cleanup started: retentionDays={}", retentionDays);
-        Instant cutoff = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
-        List<CourtListStatusEntity> entities = repository.findByLastUpdatedBefore(cutoff);
+        LocalDate cutoff = LocalDate.now().minusDays(retentionDays);
+        List<CourtListStatusEntity> entities = repository.findByPublishDateBefore(cutoff);
         log.info("Cleanup: found {} record(s) older than {} days (cutoff {})", entities.size(), retentionDays, cutoff);
 
         for (CourtListStatusEntity entity : entities) {
