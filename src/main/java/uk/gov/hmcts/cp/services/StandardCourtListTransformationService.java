@@ -95,9 +95,9 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
         if (isNonBlank(courtParty.getFirstName()) || isNonBlank(courtParty.getSurname()) || isNonBlank(courtParty.getName()) || isNonBlank(courtParty.getDateOfBirth())) {
             String surname = isNonBlank(courtParty.getSurname()) ? courtParty.getSurname() : courtParty.getName();
             individualDetails = IndividualDetails.builder()
-                    .individualForenames(courtParty.getFirstName())
+                    .individualForenames("")
                     .individualMiddleName(null)
-                    .individualSurname(surname)
+                    .individualSurname("Defendant")
                     .dateOfBirth(convertDateOfBirthToIso(courtParty.getDateOfBirth()))
                     .age(convertAge(courtParty.getAge()))
                     .address(transformAddressSchemaFromDefendant(courtParty.getAddress()))
