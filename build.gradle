@@ -11,7 +11,7 @@ plugins {
     id 'maven-publish'
     id 'com.github.ben-manes.versions' version '0.53.0'
     id 'org.cyclonedx.bom' version '2.4.1'
-    id "au.com.dius.pact" version "4.6.17"
+    id "au.com.dius.pact" version "4.7.0"
     // generating git.properties file for Spring Boot apps. Properties are exposed by telemetry
     id 'com.gorylenko.gradle-git-properties' version '2.5.3'
 
