@@ -355,7 +355,6 @@ class StandardCourtListTransformationServiceTest {
         // Given - hearing with courtApplicationId and courtApplication (applicant + respondents)
         Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
                 .getTimeslots().getFirst().getHearings().getFirst();
-        hearing.setDefendants(Collections.emptyList());
         hearing.setCourtApplicationId("APP-REF-12345");
         hearing.setCourtApplication(CourtApplication.builder()
                 .applicant(CourtApplicationParty.builder()
@@ -383,13 +382,12 @@ class StandardCourtListTransformationServiceTest {
         assertThat(app.getApplicationReference()).isEqualTo(hearing.getCaseNumber());
         assertThat(app.getApplicationType()).isNull();
         assertThat(app.getApplicationParticulars()).isNull();
-        assertThat(app.getReportingRestriction()).isFalse();
         assertThat(app.getParty()).hasSize(2); // applicant + one respondent
         assertThat(app.getParty().getFirst().getPartyRole()).isEqualTo("APPLICANT");
-        assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("Defendant");
+        assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("Applicant Name");
         assertThat(app.getParty().getFirst().getIndividualDetails().getDateOfBirth()).isEqualTo("1990-01-01");
         assertThat(app.getParty().get(1).getPartyRole()).isEqualTo("RESPONDENT");
-        assertThat(app.getParty().get(1).getIndividualDetails().getIndividualSurname()).isEqualTo("Defendant");
+        assertThat(app.getParty().get(1).getIndividualDetails().getIndividualSurname()).isEqualTo("Respondent One");
         assertThat(app.getParty().get(1).getIndividualDetails().getDateOfBirth()).isEqualTo("1985-09-15");
     }
 
@@ -398,7 +396,6 @@ class StandardCourtListTransformationServiceTest {
         // Given - application on hearing with no subject on courtApplication; subject is on parent (hearing)
         Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
                 .getTimeslots().getFirst().getHearings().getFirst();
-        hearing.setDefendants(Collections.emptyList());
         String subjectId = "subject-from-parent-id";
         CourtApplicationParty parentSubject = CourtApplicationParty.builder()
                 .id(subjectId)
@@ -439,8 +436,8 @@ class StandardCourtListTransformationServiceTest {
         assertThat(subjectParty.getPartyRole()).isEqualTo("SUBJECT");
         assertThat(subjectParty.getSubject()).isTrue();
         assertThat(subjectParty.getIndividualDetails()).isNotNull();
-        assertThat(subjectParty.getIndividualDetails().getIndividualForenames()).isEqualTo("");
-        assertThat(subjectParty.getIndividualDetails().getIndividualSurname()).isEqualTo("Defendant");
+        assertThat(subjectParty.getIndividualDetails().getIndividualForenames()).isEqualTo("John");
+        assertThat(subjectParty.getIndividualDetails().getIndividualSurname()).isEqualTo("Smith");
     }
 
     @Test
@@ -448,7 +445,6 @@ class StandardCourtListTransformationServiceTest {
         // Given - both hearing and courtApplication have a subject; courtApplication.subject takes precedence
         Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
                 .getTimeslots().getFirst().getHearings().getFirst();
-        hearing.setDefendants(Collections.emptyList());
         CourtApplicationParty appSubject = CourtApplicationParty.builder()
                 .id("subject-on-application")
                 .firstName("App")
@@ -476,17 +472,14 @@ class StandardCourtListTransformationServiceTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(subjectParty.getSubject()).isTrue();
-        assertThat(subjectParty.getIndividualDetails().getIndividualSurname()).isEqualTo("Defendant");
-        assertThat(subjectParty.getIndividualDetails().getIndividualForenames()).isEqualTo("");
+        assertThat(subjectParty.getIndividualDetails().getIndividualSurname()).isEqualTo("Subject");
+        assertThat(subjectParty.getIndividualDetails().getIndividualForenames()).isEqualTo("App");
     }
 
     @Test
     void transform_shouldHandleBirminghamPayloadWithCaseOnlyAndApplicationOnlyHearings() throws Exception {
         // Given - Birmingham payload: first hearing has defendants (case only), second has court application (application only)
         payload = loadPayloadFromStubData("stubdata/court-list-payload-birmingham-standard.json");
-        // Clear defendants from second hearing so it is application-only
-        payload.getHearingDates().getFirst().getCourtRooms().getFirst()
-                .getTimeslots().getFirst().getHearings().get(1).setDefendants(Collections.emptyList());
 
         // When
         CourtListDocument document = transformationService.transform(payload);
@@ -548,7 +541,42 @@ class StandardCourtListTransformationServiceTest {
         assertThat(app.getApplicationType()).isEqualTo("Application within civil proceedings");
         assertThat(app.getParty()).hasSize(1);
         assertThat(app.getParty().getFirst().getPartyRole()).isEqualTo("APPLICANT");
-        assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("Defendant");
+        assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("TV Licensing");
+    }
+
+    @Test
+    void transform_shouldStripSurroundingWhitespaceFromApplicationParticularsViaCaTHStringUtils() {
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.setCourtApplicationId("APP-REF-12345");
+        hearing.setCourtApplication(CourtApplication.builder()
+                .applicationParticulars("\n Some application particulars\n ")
+                .applicant(CourtApplicationParty.builder()
+                        .name("Applicant Name")
+                        .build())
+                .build());
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        Application app = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst()
+                .getApplication().getFirst();
+        assertThat(app.getApplicationParticulars()).isEqualTo("Some application particulars");
+    }
+
+    @Test
+    void transform_shouldStripSurroundingWhitespaceFromOffenceWordingViaCaTHStringUtils() {
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        Defendant defendant = hearing.getDefendants().getFirst();
+        defendant.getOffences().getFirst().setOffenceWording("\n Some offence wording\n ");
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        OffenceSchema offence = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst()
+                .getCaseList().getFirst().getParty().getFirst().getOffence().getFirst();
+        assertThat(offence.getOffenceWording()).isEqualTo("Some offence wording");
     }
 
     /**

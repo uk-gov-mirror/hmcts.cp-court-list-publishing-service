@@ -6,6 +6,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.models.*;
 import uk.gov.hmcts.cp.models.transformed.schema.*;
+import uk.gov.hmcts.cp.util.CaTHStringUtils;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -95,9 +96,9 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
         if (isNonBlank(courtParty.getFirstName()) || isNonBlank(courtParty.getSurname()) || isNonBlank(courtParty.getName()) || isNonBlank(courtParty.getDateOfBirth())) {
             String surname = isNonBlank(courtParty.getSurname()) ? courtParty.getSurname() : courtParty.getName();
             individualDetails = IndividualDetails.builder()
-                    .individualForenames("")
+                    .individualForenames(courtParty.getFirstName())
                     .individualMiddleName(null)
-                    .individualSurname("Defendant")
+                    .individualSurname(surname)
                     .dateOfBirth(convertDateOfBirthToIso(courtParty.getDateOfBirth()))
                     .age(convertAge(courtParty.getAge()))
                     .address(transformAddressSchemaFromDefendant(courtParty.getAddress()))
@@ -129,27 +130,13 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
 
     @Override
     protected List<Application> buildApplications(Hearing hearing, CourtApplication courtApplication, List<Party> parties) {
-        boolean hasReportingRestriction = hasApplicationPartyReportingRestriction(courtApplication);
         Application application = Application.builder()
                 .applicationReference(hearing.getCaseNumber())
                 .applicationType(courtApplication.getApplicationType())
-                .applicationParticulars(courtApplication.getApplicationParticulars())
-                .reportingRestriction(hasReportingRestriction)
+                .applicationParticulars(CaTHStringUtils.stripSurroundingWhitespace(courtApplication.getApplicationParticulars()))
                 .party(parties.isEmpty() ? null : parties)
                 .build();
         return Collections.singletonList(application);
-    }
-
-    private boolean hasApplicationPartyReportingRestriction(CourtApplication courtApplication) {
-        if (courtApplication == null) {
-            return false;
-        }
-        CourtApplicationParty applicant = courtApplication.getApplicant();
-        if (applicant == null || applicant.getReportingRestrictions() == null || applicant.getReportingRestrictions().isEmpty()) {
-            return false;
-        }
-        return applicant.getReportingRestrictions().stream()
-                .anyMatch(r -> r != null && isNonBlank(r.getLabel()));
     }
 
     private List<CaseSchema> transformCases(Hearing hearing, String subjectPartyId) {
@@ -327,7 +314,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
         return OffenceSchema.builder()
                 .offenceCode(offence.getOffenceCode())
                 .offenceTitle(offence.getOffenceTitle())
-                .offenceWording(offence.getOffenceWording())
+                .offenceWording(CaTHStringUtils.stripSurroundingWhitespace(offence.getOffenceWording()))
                 .offenceMaxPen(offence.getMaxPenalty())
                 .reportingRestriction(offenceReportingRestriction)
                 .reportingRestrictionDetails(offenceReportingDetails)

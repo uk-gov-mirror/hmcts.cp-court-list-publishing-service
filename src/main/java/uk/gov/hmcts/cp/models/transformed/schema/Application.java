@@ -18,10 +18,7 @@ public class Application {
     
     @JsonProperty("applicationReference")
     private String applicationReference;
-    
-    @JsonProperty("reportingRestriction")
-    private Boolean reportingRestriction;
-    
+
     @JsonProperty("applicationType")
     private String applicationType;
 
