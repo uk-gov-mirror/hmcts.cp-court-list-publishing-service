@@ -161,9 +161,9 @@ dependencies {
     testImplementation "org.springframework.boot:spring-boot-starter-webmvc-test"
     testImplementation "org.springframework.boot:spring-boot-starter-data-jpa-test"
 
-    testImplementation 'au.com.dius.pact.provider:junit5:4.6.17'
+    testImplementation 'au.com.dius.pact.provider:junit5:4.7.0'
     testImplementation 'au.com.dius.pact.provider:spring6:4.6.17'
-    pactVerificationTestImplementation 'au.com.dius.pact.provider:junit5:4.6.17'
+    pactVerificationTestImplementation 'au.com.dius.pact.provider:junit5:4.7.0'
     pactVerificationTestImplementation 'au.com.dius.pact.provider:spring6:4.6.17'
 
     // Testcontainers (BOM)
