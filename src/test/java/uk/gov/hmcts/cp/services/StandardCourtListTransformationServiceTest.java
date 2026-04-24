@@ -382,7 +382,6 @@ class StandardCourtListTransformationServiceTest {
         assertThat(app.getApplicationReference()).isEqualTo(hearing.getCaseNumber());
         assertThat(app.getApplicationType()).isNull();
         assertThat(app.getApplicationParticulars()).isNull();
-        assertThat(app.getReportingRestriction()).isFalse();
         assertThat(app.getParty()).hasSize(2); // applicant + one respondent
         assertThat(app.getParty().getFirst().getPartyRole()).isEqualTo("APPLICANT");
         assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("Applicant Name");
@@ -543,6 +542,41 @@ class StandardCourtListTransformationServiceTest {
         assertThat(app.getParty()).hasSize(1);
         assertThat(app.getParty().getFirst().getPartyRole()).isEqualTo("APPLICANT");
         assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("TV Licensing");
+    }
+
+    @Test
+    void transform_shouldStripSurroundingWhitespaceFromApplicationParticularsViaCaTHStringUtils() {
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.setCourtApplicationId("APP-REF-12345");
+        hearing.setCourtApplication(CourtApplication.builder()
+                .applicationParticulars("\n Some application particulars\n ")
+                .applicant(CourtApplicationParty.builder()
+                        .name("Applicant Name")
+                        .build())
+                .build());
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        Application app = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst()
+                .getApplication().getFirst();
+        assertThat(app.getApplicationParticulars()).isEqualTo("Some application particulars");
+    }
+
+    @Test
+    void transform_shouldStripSurroundingWhitespaceFromOffenceWordingViaCaTHStringUtils() {
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        Defendant defendant = hearing.getDefendants().getFirst();
+        defendant.getOffences().getFirst().setOffenceWording("\n Some offence wording\n ");
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        OffenceSchema offence = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst()
+                .getCaseList().getFirst().getParty().getFirst().getOffence().getFirst();
+        assertThat(offence.getOffenceWording()).isEqualTo("Some offence wording");
     }
 
     /**

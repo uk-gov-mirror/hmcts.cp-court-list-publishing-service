@@ -486,13 +486,32 @@ class OnlinePublicCourtListTransformationServiceTest {
         Application app = applications.getFirst();
         assertThat(app.getApplicationReference()).isEqualTo(hearing.getCaseNumber());
         assertThat(app.getApplicationType()).isNull();
-        assertThat(app.getReportingRestriction()).isFalse();
         assertThat(app.getParty()).hasSize(2); // applicant + one respondent
         assertThat(app.getParty().getFirst().getPartyRole()).isEqualTo("APPLICANT");
         assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("Applicant Name");
         assertThat(app.getParty().getFirst().getIndividualDetails().getDateOfBirth()).isEqualTo("1990-01-01"); // public list: no DOB
         assertThat(app.getParty().get(1).getPartyRole()).isEqualTo("RESPONDENT");
         assertThat(app.getParty().get(1).getIndividualDetails().getIndividualSurname()).isEqualTo("Respondent One");
+    }
+
+    @Test
+    void transform_shouldStripSurroundingWhitespaceFromApplicationParticularsViaCaTHStringUtils() {
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.setCourtApplicationId("PUBLIC-APP-REF-99");
+        hearing.setCourtApplication(CourtApplication.builder()
+                .applicationParticulars("\n Some application particulars\n ")
+                .applicant(CourtApplicationParty.builder()
+                        .name("Applicant Name")
+                        .build())
+                .build());
+
+        CourtListDocument document = transformationService.transform(payload);
+
+        Application app = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst()
+                .getApplication().getFirst();
+        assertThat(app.getApplicationParticulars()).isEqualTo("Some application particulars");
     }
 
     private CourtListPayload loadPayloadFromStubData(String resourcePath) throws Exception {

@@ -105,7 +105,7 @@
                 "examples": [
                   "A & B Solicitors"
                 ],
-                "pattern": "^(?!(.|\\r|\\n)*<[^>]+>)(.|\\r|\\n)*$"
+                "pattern": "(?s)^(?!.*(?:<\\s*\\/[^>]*>|<[^>]*\\/>|&lt;\\s*\\/[^&]*&gt;|&lt;[^&]*\\/&gt;)).*$"
               }
             }
           },
@@ -336,11 +336,6 @@
                                               "examples": [
                                                 "application type example"
                                               ],
-                                              "pattern": "^(?!(.|\\r|\\n)*<[^>]+>)(.|\\r|\\n)*$"
-                                            },
-                                            "reportingRestriction": {
-                                              "title": "Reporting Restriction",
-                                              "type": "boolean",
                                               "pattern": "^(?!(.|\\r|\\n)*<[^>]+>)(.|\\r|\\n)*$"
                                             },
                                             "party": {
