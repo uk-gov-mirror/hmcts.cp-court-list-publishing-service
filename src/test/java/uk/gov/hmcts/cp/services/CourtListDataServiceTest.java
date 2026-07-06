@@ -395,6 +395,28 @@ class CourtListDataServiceTest {
     }
 
     @Test
+    void getCrownCourtDailyListPayloadForFirmUsesWeekCommencingParams() {
+        String payload = "{\"listType\":\"firm\"}";
+        when(publicCourtListRestTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(new ResponseEntity<>(payload, HttpStatus.OK));
+
+        String result = courtListDataService.getCrownCourtDailyListPayload(
+                CourtListType.FIRM, "f8254db1-1683-483e-afb3-b87fde5a0a26", null,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 6), "user-id", false);
+
+        assertThat(result).isEqualTo(payload);
+        verify(publicCourtListRestTemplate).exchange(
+                argThat((String url) -> url.contains(DAILY_LIST_PATH) && url.contains("publishCourtListType=FIRM")
+                        && url.contains("courtCentreId=f8254db1-1683-483e-afb3-b87fde5a0a26")
+                        && url.contains("weekCommencingStartDate=2026-09-01") && url.contains("weekCommencingEndDate=2026-09-06")
+                        && !url.contains("&startDate=") && !url.contains("&endDate=")),
+                eq(HttpMethod.GET),
+                argThat((HttpEntity<?> entity) -> entity.getHeaders().getAccept().stream()
+                        .anyMatch(mt -> "application/vnd.listing.search.daily.list.payload+json".equals(mt.toString()))),
+                eq(String.class));
+    }
+
+    @Test
     void getCrownCourtDailyListPayloadDoesNotCallProgressionService() {
         String payload = "{\"listType\":\"final\"}";
         when(publicCourtListRestTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))

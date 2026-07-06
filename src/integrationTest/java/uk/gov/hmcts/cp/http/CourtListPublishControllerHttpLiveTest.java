@@ -645,6 +645,19 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
             assertThat(matches)
                     .as("Crown daily list /dailylistpayload must be called exactly once for %s", courtListType)
                     .hasSize(1);
+
+            String url = wiremockRequestUrl(matches.get(0));
+            if (CourtListType.FIRM.equals(courtListType)) {
+                assertThat(url)
+                        .as("FIRM /dailylistpayload call must use weekCommencing date params")
+                        .contains("weekCommencingStartDate=", "weekCommencingEndDate=")
+                        .doesNotContain("&startDate=", "&endDate=");
+            } else {
+                assertThat(url)
+                        .as("Non-FIRM /dailylistpayload call must use plain startDate/endDate params")
+                        .contains("&startDate=", "&endDate=")
+                        .doesNotContain("weekCommencingStartDate=", "weekCommencingEndDate=");
+            }
         }
     }
 

@@ -215,12 +215,17 @@ public class CourtListDataService {
             throw new CourtListDownloadException("Court list data is not configured");
         }
 
-        String url = UriComponentsBuilder.fromUriString(courtListDataBaseUrl).path(DAILY_LIST_PAYLOAD_PATH)
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(courtListDataBaseUrl).path(DAILY_LIST_PAYLOAD_PATH)
                 .queryParam("publishCourtListType", publishCourtListType.name())
-                .queryParam("courtCentreId", courtCentreId)
-                .queryParam("startDate", startDate)
-                .queryParam("endDate", endDate)
-                .build().toUriString();
+                .queryParam("courtCentreId", courtCentreId);
+        if (CourtListType.FIRM.equals(publishCourtListType)) {
+            builder.queryParam("weekCommencingStartDate", startDate)
+                    .queryParam("weekCommencingEndDate", endDate);
+        } else {
+            builder.queryParam("startDate", startDate)
+                    .queryParam("endDate", endDate);
+        }
+        String url = builder.build().toUriString();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setAccept(Collections.singletonList(MediaType.parseMediaType(ACCEPT_CROWN_DAILY_LIST_PAYLOAD)));
