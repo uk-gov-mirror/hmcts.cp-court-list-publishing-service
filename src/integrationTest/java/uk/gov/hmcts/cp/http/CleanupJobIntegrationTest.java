@@ -125,8 +125,8 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
     }
 
     @Test
-    void cleanupOldData_shouldNotDeleteRecord_whenPdfTypeAndPdfBlobDoesNotExist() throws Exception {
-        // ONLINE_PUBLIC requires both PDF and JSON blobs; if neither exists the record must be kept
+    void cleanupOldData_shouldDeleteRecord_whenNeitherPdfNorJsonBlobExists() throws Exception {
+        // Neither blob exists to begin with, so there's nothing to fail to delete; the record is removed
         UUID courtListId = UUID.randomUUID();
         Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
         LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
@@ -134,7 +134,7 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
 
         invokePublishStatusCleanup();
 
-        assertRowExists(courtListId);
+        assertRowAbsent(courtListId);
     }
 
     @Test
