@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCHEMATIC // cp-court-list-publishing-service</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --void: #04080f;
+    --panel: #081120;
+    --panel-2: #0a1628;
+    --grid: rgba(40, 150, 220, .08);
+    --cyan: #2bd9fe;
+    --cyan-dim: #1a7c95;
+    --mag: #ff3d81;
+    --mag-dim: #8a2c50;
+    --txt: #9fc3d8;
+    --txt-bright: #d9eefa;
+    --edge: #14304a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      linear-gradient(rgba(40,150,220,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(40,150,220,.03) 1px, transparent 1px),
+      var(--void);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+    color: var(--txt);
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 15.5px;
+    line-height: 1.7;
+  }
+  .frame { max-width: 1060px; margin: 0 auto; padding: 44px 28px 120px; }
+  .mono { font-family: 'Share Tech Mono', monospace; }
+
+  /* ---- title block (engineering drawing style) ---- */
+  .titleblock {
+    border: 1px solid var(--cyan-dim);
+    background: var(--panel);
+    box-shadow: 0 0 60px rgba(43,217,254,.07), inset 0 0 0 1px rgba(43,217,254,.06);
+    margin-bottom: 60px; position: relative;
+  }
+  .titleblock .tb-top {
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+    border-bottom: 1px solid var(--edge); padding: 10px 22px;
+    font-family: 'Share Tech Mono', monospace; font-size: 11.5px; color: var(--cyan-dim);
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+  .titleblock .tb-main { padding: 38px 22px 30px; }
+  h1 {
+    font-size: clamp(26px, 4.6vw, 46px); font-weight: 700; letter-spacing: 1px;
+    color: var(--txt-bright); text-transform: uppercase; line-height: 1.1;
+  }
+  h1 .hl { color: var(--cyan); text-shadow: 0 0 18px rgba(43,217,254,.6); }
+  .tb-sub { margin-top: 14px; max-width: 76ch; }
+  .tb-specs {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    border-top: 1px solid var(--edge);
+  }
+  .tb-specs div {
+    padding: 12px 22px; border-right: 1px solid var(--edge);
+    font-family: 'Share Tech Mono', monospace; font-size: 12px;
+  }
+  .tb-specs div:last-child { border-right: none; }
+  .tb-specs .lbl { color: var(--cyan-dim); text-transform: uppercase; letter-spacing: 2px; font-size: 10px; display: block; }
+  .tb-specs .val { color: var(--cyan); }
+
+  /* ---- section panels with corner ticks ---- */
+  section { position: relative; margin-bottom: 64px; padding: 34px 34px 28px; background: rgba(8,17,32,.78); border: 1px solid var(--edge); }
+  section::before, section::after,
+  section .tick::before, section .tick::after {
+    content: ""; position: absolute; width: 14px; height: 14px; border-color: var(--cyan); border-style: solid;
+  }
+  section::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  section::after { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+  section .tick::before { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+  section .tick::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+  .sec-id {
+    position: absolute; top: -11px; left: 26px; background: var(--void);
+    font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px;
+    color: var(--cyan-dim); padding: 0 10px; text-transform: uppercase;
+  }
+  h2 {
+    color: var(--cyan); font-size: 21px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 3px; margin-bottom: 22px; text-shadow: 0 0 12px rgba(43,217,254,.35);
+  }
+  h3 { color: var(--txt-bright); font-size: 15px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin: 26px 0 10px; }
+  h3::before { content: "▸ "; color: var(--mag); }
+  p { margin-bottom: 14px; max-width: 82ch; }
+  strong { color: var(--txt-bright); }
+  code {
+    font-family: 'Share Tech Mono', monospace; font-size: 13.5px;
+    color: var(--cyan); background: rgba(43,217,254,.07); padding: 1px 6px;
+    border: 1px solid rgba(43,217,254,.15);
+  }
+  pre {
+    font-family: 'Share Tech Mono', monospace; font-size: 12.5px; line-height: 1.6;
+    background: var(--void); border: 1px solid var(--edge); border-left: 3px solid var(--cyan);
+    padding: 20px 24px; margin: 18px 0; overflow-x: auto; color: var(--txt);
+  }
+  pre code { background: none; border: none; padding: 0; }
+  pre .c { color: #3d6075; }
+  pre .cy { color: var(--cyan); }
+  pre .mg { color: var(--mag); }
+
+  /* ---- pipeline node diagram for lifecycle ---- */
+  .pipe { margin: 10px 0; }
+  .node { display: flex; gap: 20px; position: relative; padding-bottom: 26px; }
+  .node:not(:last-child)::before {
+    content: ""; position: absolute; left: 21px; top: 44px; bottom: -2px;
+    width: 2px; background: linear-gradient(var(--cyan-dim), rgba(43,217,254,.15));
+  }
+  .node .pin {
+    width: 44px; height: 44px; flex-shrink: 0; border: 1px solid var(--cyan-dim);
+    background: var(--panel-2); color: var(--cyan);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace; font-size: 13px;
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  }
+  .node .body { padding-top: 4px; max-width: 80ch; }
+  .node .body .t { color: var(--txt-bright); font-weight: 600; letter-spacing: .5px; }
+
+  ul.spec { list-style: none; max-width: 84ch; }
+  ul.spec li { padding: 9px 0 9px 28px; position: relative; border-bottom: 1px dashed var(--edge); }
+  ul.spec li::before { content: "◇"; position: absolute; left: 4px; color: var(--mag); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 14px 0; }
+  th { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan-dim); border-bottom: 1px solid var(--cyan-dim); padding: 9px 14px; text-align: left; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--edge); vertical-align: top; }
+  td:first-child code { white-space: nowrap; }
+
+  /* ====== DISTINCT CI SECTION — magenta schematic ====== */
+  section.ci { border-color: var(--mag-dim); background: linear-gradient(180deg, rgba(255,61,129,.05), rgba(8,17,32,.85) 35%); }
+  section.ci::before, section.ci::after,
+  section.ci .tick::before, section.ci .tick::after { border-color: var(--mag); }
+  section.ci .sec-id { color: var(--mag); }
+  section.ci h2 { color: var(--mag); text-shadow: 0 0 12px rgba(255,61,129,.4); }
+  section.ci h3::before { color: var(--cyan); }
+  section.ci pre { border-left-color: var(--mag); }
+  section.ci .node .pin { border-color: var(--mag-dim); color: var(--mag); }
+  section.ci .node:not(:last-child)::before { background: linear-gradient(var(--mag-dim), rgba(255,61,129,.15)); }
+  section.ci th { color: var(--mag); border-color: var(--mag-dim); }
+
+  footer { font-family: 'Share Tech Mono', monospace; font-size: 11.5px; color: var(--cyan-dim); text-transform: uppercase; letter-spacing: 2px; border-top: 1px solid var(--edge); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="frame">
+
+<div class="titleblock">
+  <div class="tb-top">
+    <span>HMCTS // COMMON PLATFORM</span>
+    <span>DWG NO. CP-CLP-001 · REV 2026-06-13</span>
+    <span>SHEET 3 / 4</span>
+  </div>
+  <div class="tb-main">
+    <h1>SERVICE SCHEMATIC //<br><span class="hl">cp-court-list-publishing-service</span></h1>
+    <p class="tb-sub">Magistrates' court-list publication unit. Inputs: Progression query API. Outputs: CaTH publication document (via APIM) + rendered PDF in Azure Blob Storage. Status persisted in PostgreSQL.</p>
+  </div>
+  <div class="tb-specs">
+    <div><span class="lbl">Runtime</span><span class="val">Java 21 / Boot 4.0.0</span></div>
+    <div><span class="lbl">Build</span><span class="val">Gradle 9</span></div>
+    <div><span class="lbl">Store</span><span class="val">PostgreSQL 16 + Flyway</span></div>
+    <div><span class="lbl">Contract</span><span class="val">OpenAPI 0.1.22</span></div>
+    <div><span class="lbl">Pattern</span><span class="val">Modern-by-Default</span></div>
+  </div>
+</div>
+
+<section id="overview">
+  <span class="tick"></span><span class="sec-id">PANEL 01 // SYSTEM OVERVIEW</span>
+  <h2>System Overview</h2>
+  <p>This unit is an HMCTS <strong>Modern by Default</strong> Spring Boot 4 service from <code>service-hmcts-crime-springboot-template</code> — explicitly <strong>not</strong> a CQRS/event-sourced <code>cpp-context-*</code> WildFly context. No Maven, no RAML, no event store; one deployable, one status table, contract-first REST.</p>
+  <p>Function: on an authorised request (permission: <strong>Publish Magistrate Court List</strong>), pull the court-list payload from <strong>Progression</strong>, transform it into the <strong>CaTH</strong> (Court and Tribunal Hearings) document format, sanitize + schema-validate it, transmit it to CaTH through Azure APIM, render a PDF via the Document Generator, and store the PDF in <strong>Azure Blob Storage</strong> for download. Controllers implement interfaces generated from <code>api-cp-crime-court-list-publisher:0.1.22</code> — routes are never hand-rolled.</p>
+</section>
+
+<section id="layout">
+  <span class="tick"></span><span class="sec-id">PANEL 02 // COMPONENT LAYOUT</span>
+  <h2>Component Layout</h2>
+<pre><code>cp-court-list-publishing-service/
+├── build.gradle / gradle.properties    <span class="c">// source sets, compose plugin, version pins</span>
+├── src/main/java/uk/gov/hmcts/cp/
+│   ├── Application.java                <span class="c">// entry point</span>
+│   ├── controllers/                    <span class="c">// publish + file download + error mapping</span>
+│   ├── services/                       <span class="c">// transform, CaTH, PDF, blob, refdata</span>
+│   │   └── sanitization/               <span class="c">// HTML strip + WAF pattern scrub</span>
+│   ├── task/                           <span class="c">// <span class="mg">PUBLISH_AND_PDF_GENERATION_TASK</span></span>
+│   ├── models/ → transformed/ → schema/<span class="c">// inbound payload → CaTH document</span>
+│   ├── domain/ + repositories/         <span class="c">// CourtListStatusEntity (JPA)</span>
+│   ├── filters/jwt/ + acl/             <span class="c">// JWTFilter, permission constants</span>
+│   └── config/                         <span class="c">// Azure, JPA, task-manager, CORS, audit</span>
+├── src/main/resources/
+│   ├── application-*.yml               <span class="c">// profile slices</span>
+│   ├── db/migration/                   <span class="c">// Flyway V1001 court_list_publish_status</span>
+│   └── schema/                         <span class="c">// 2× court-list JSON Schemas (everit)</span>
+├── src/test/                           <span class="c">// unit tests + stubdata</span>
+├── src/integrationTest/                <span class="c">// HTTP ITs + wiremock mappings/__files</span>
+├── src/pactVerificationTest/           <span class="c">// Pact provider verification</span>
+├── docker/                             <span class="c">// Dockerfile + compose.integration.yml</span>
+└── .github/workflows/                  <span class="c">// GitHub Actions — PANEL 07</span></code></pre>
+</section>
+
+<section id="flow">
+  <span class="tick"></span><span class="sec-id">PANEL 03 // SIGNAL FLOW</span>
+  <h2>Signal Flow — One Publish Request</h2>
+  <div class="pipe">
+    <div class="node"><div class="pin">01</div><div class="body"><span class="t">INGRESS.</span> <code>POST /courtlistpublishing-service/courtlistpublish</code> → <strong>CourtListPublishController</strong> (implements generated <code>CourtListPublishApi</code>). Filter chain: <code>JWTFilter</code> → auth-rules filter (permission <strong>Publish Magistrate Court List</strong>). <code>CJSCPPUID</code> header mandatory.</div></div>
+    <div class="node"><div class="pin">02</div><div class="body"><span class="t">STATUS REGISTER.</span> <strong>CourtListPublishStatusService.createOrUpdate</strong> upserts <code>court_list_publish_status</code> (court centre / list type / date range) → <code>courtListId</code>.</div></div>
+    <div class="node"><div class="pin">03</div><div class="body"><span class="t">ASYNC HANDOFF.</span> <strong>CourtListTaskTriggerService</strong> enqueues <code>PUBLISH_AND_PDF_GENERATION_TASK</code> via task-manager-service. HTTP returns immediately.</div></div>
+    <div class="node"><div class="pin">04</div><div class="body"><span class="t">FETCH.</span> Task executor reads jobData → <strong>CourtListQueryService</strong> → Progression query API for the raw <code>CourtListPayload</code>.</div></div>
+    <div class="node"><div class="pin">05</div><div class="body"><span class="t">TRANSFORM.</span> Strategy by <code>CourtListType</code>: <strong>Standard</strong> / <strong>OnlinePublic</strong> transformation service, enriched via <strong>ReferenceDataService</strong> (courtrooms, LJA / enforcement area).</div></div>
+    <div class="node"><div class="pin">06</div><div class="body"><span class="t">SCRUB + VALIDATE.</span> <strong>CourtListDocumentSanitizer</strong> (HTML strip, WAF patterns, <code>RequiredStringFieldsRegistry</code>) → <strong>JsonSchemaValidatorService</strong> against <code>standard-court-list-schema.json</code> / <code>online-public-court-list-schema.json</code>.</div></div>
+    <div class="node"><div class="pin">07</div><div class="body"><span class="t">TRANSMIT.</span> <strong>CaTHService / CaTHPublisher</strong> → CaTH via APIM. Gated by <code>cath.publishing-enabled</code>; <code>StubCourtListPublisher</code> substitutes when off.</div></div>
+    <div class="node"><div class="pin">08</div><div class="body"><span class="t">RENDER + STORE.</span> <strong>CourtListPdfHelper → DocumentGeneratorClient</strong> renders PDF → <strong>AzureBlobService</strong> uploads to blob container (Azurite locally).</div></div>
+    <div class="node"><div class="pin">09</div><div class="body"><span class="t">EGRESS.</span> Status → <code>PUBLISH_SUCCESSFUL</code>; <strong>FileController</strong> + <strong>CourtListDownloadService</strong> stream <code>CourtList.pdf</code> on demand.</div></div>
+  </div>
+</section>
+
+<section id="abstractions">
+  <span class="tick"></span><span class="sec-id">PANEL 04 // KEY COMPONENTS</span>
+  <h2>Key Components</h2>
+  <table>
+    <tr><th>Component</th><th>Specification</th></tr>
+    <tr><td><code>CourtListPublishApi</code></td><td>Generated interface from the OpenAPI artifact. Contract change = bump <code>apiSpecVersion</code> in <code>gradle.properties</code>.</td></tr>
+    <tr><td><code>@Task / ExecutableTask</code></td><td>task-manager-service durable-job abstraction; string ID binds trigger ↔ executor.</td></tr>
+    <tr><td>Transformation strategies</td><td><code>Base/Standard/OnlinePublicCourtListTransformationService</code> → CaTH-shaped <code>CourtListDocument</code> in <code>models/transformed</code>.</td></tr>
+    <tr><td>Sanitizer chain</td><td><code>HtmlStrippingSanitizer</code> + <code>WafPatternSanitizer</code>; mandatory-field protection via registry.</td></tr>
+    <tr><td><code>JsonSchemaValidatorService</code></td><td>Final gate (everit-json-schema) before public egress.</td></tr>
+    <tr><td><code>CourtListStatusEntity</code></td><td>Single JPA entity; one table tracks the publish lifecycle.</td></tr>
+    <tr><td>Profile-sliced config</td><td><code>application-azure/authz/audit/datasource/jwt.yml</code>; the <code>integration</code> profile rewires to WireMock + Azurite.</td></tr>
+  </table>
+</section>
+
+<section id="hazards">
+  <span class="tick"></span><span class="sec-id">PANEL 05 // HAZARD NOTES</span>
+  <h2>Hazard Notes</h2>
+  <ul class="spec">
+    <li>README is largely the <strong>template's</strong> README and references a <code>docs/</code> directory that doesn't exist. <code>build.gradle</code> is the source of truth.</li>
+    <li><strong>No <code>runIntegrationTests.sh</code>.</strong> Workspace CQRS conventions don't apply. ITs: <code>gradle integration</code>. Caution: <code>gradle build</code> runs them too (<code>build → check → integration</code>).</li>
+    <li>Docker daemon must be up first — <code>checkDockerDaemon</code> fails fast. Port map: app <code>8082</code>, debug <code>8787→5005</code>, WireMock <code>8089</code>, Postgres <code>55432</code>, Azurite <code>10000</code>.</li>
+    <li><code>composeDown</code> intentionally not finalized — stack persists post-run for inspection; next <code>composeUp</code> recreates.</li>
+    <li>Committed Azurite key = Microsoft's <strong>public dev key</strong> (<code># gitleaks:allow</code>). Not a leak. Do not rotate.</li>
+    <li>Compile is <code>-Werror</code>; PMD ruleset gates PRs; CodeQL + secrets-scanner also run.</li>
+    <li>Version drift: CI pre-pulls <code>azurite:3.33.0</code>, compose runs <code>3.34.0</code>. Harmless — pre-pull is cache-warming only.</li>
+    <li>Feature flags everywhere: <code>CP_CLP_AUTHZ_ENABLED</code>, <code>CP_CLP_AUDIT_ENABLED</code>, <code>CATH_PUBLISHING_ENABLED</code>. ITs run authz/audit OFF, CaTH ON → WireMock.</li>
+  </ul>
+</section>
+
+<section id="start">
+  <span class="tick"></span><span class="sec-id">PANEL 06 // READ ORDER</span>
+  <h2>Recommended Read Order</h2>
+  <div class="pipe">
+    <div class="node"><div class="pin">R1</div><div class="body"><code>build.gradle</code> — the whole machine: source sets, compose lifecycle, publishing.</div></div>
+    <div class="node"><div class="pin">R2</div><div class="body"><code>controllers/CourtListPublishController.java</code> — ingress + async handoff.</div></div>
+    <div class="node"><div class="pin">R3</div><div class="body"><code>task/CourtListPublishAndPDFGenerationTask.java</code> — the pipeline end-to-end.</div></div>
+    <div class="node"><div class="pin">R4</div><div class="body"><code>services/CaTHService.java</code> + the two transformation services — domain core.</div></div>
+    <div class="node"><div class="pin">R5</div><div class="body"><code>integrationTest/.../CaTHPublishingIntegrationTest.java</code> beside <code>docker/docker-compose.integration.yml</code> — executable spec.</div></div>
+  </div>
+</section>
+
+<!-- ============ DISTINCT PANEL: CI (magenta) ============ -->
+<section id="ci" class="ci">
+  <span class="tick"></span><span class="sec-id">PANEL 07 // CI SCHEMATIC — GITHUB ACTIONS</span>
+  <h2>GitHub Actions &amp; Integration Tests in CI</h2>
+  <p>CI runs on <strong>GitHub Actions</strong>; only the final deployment hop crosses to Azure DevOps. Workflow inventory in <code>.github/workflows/</code>:</p>
+  <table>
+    <tr><th>Workflow</th><th>Trigger</th><th>Function</th></tr>
+    <tr><td><code>ci-draft.yml</code></td><td>PR + push → main</td><td>Calls reusable pipeline. PR = build only; push = build + publish + deploy.</td></tr>
+    <tr><td><code>ci-released.yml</code></td><td>release published / dispatch</td><td>Reusable pipeline, <code>is_release=true</code>.</td></tr>
+    <tr><td><code>ci-build-publish.yml</code></td><td><code>workflow_call</code></td><td>Reusable core: 4 jobs (below).</td></tr>
+    <tr><td><code>code-analysis.yml</code></td><td>PR</td><td>PMD action; violations → exit 1.</td></tr>
+    <tr><td><code>codeql.yml</code> / <code>secrets-scanner.yml</code></td><td>schedule / PR</td><td>Static analysis; secret scan.</td></tr>
+  </table>
+
+  <h3>Reusable pipeline — job chain</h3>
+  <div class="pipe">
+    <div class="node"><div class="pin">J1</div><div class="body"><span class="t">ARTEFACT-VERSION.</span> <code>hmcts/artefact-version-action</code> mints draft/release version → <code>-DARTEFACT_VERSION</code>.</div></div>
+    <div class="node"><div class="pin">J2</div><div class="body"><span class="t">BUILD.</span> Temurin 21 + <code>gradle/actions/setup-gradle</code> (build cache) → pre-pull compose images → <code>gradle build</code>. Because <code>build → check → integration</code>, <strong>the full IT suite executes here, on the runner</strong>. bootJar uploaded as <code>app-jar</code>.</div></div>
+    <div class="node"><div class="pin">J3</div><div class="body"><span class="t">PROVIDER-DEPLOY.</span> <code>gradle publish</code> → GitHub Packages + ADO <code>hmcts-lib</code> feed. Secrets: <code>AZURE_DEVOPS_ARTIFACT_USERNAME/TOKEN</code>.</div></div>
+    <div class="node"><div class="pin">J4</div><div class="body"><span class="t">DEPLOY.</span> <code>hmcts/trigger-ado-pipeline</code> → ADO pipeline <code>460</code> with artefact coordinates. Secret: <code>HMCTS_ADO_PAT</code>.</div></div>
+  </div>
+
+  <h3>IT execution model on the runner</h3>
+  <p><code>ubuntu-latest</code> ships Docker + Compose v2, so the same Avast docker-compose Gradle plugin that runs locally also runs in CI — <strong>laptop and runner share one compose file</strong>:</p>
+<pre><code><span class="cy">gradle integration</span>
+  ├─ bootJar                       <span class="c">// compose COPYs jar into app image</span>
+  ├─ composeBuild + composeUp      <span class="c">// docker compose up --wait --wait-timeout 120</span>
+  │    ├─ app      :8082           <span class="c">// SPRING_PROFILES_ACTIVE=integration, authz/audit OFF</span>
+  │    ├─ db       :55432          <span class="c">// postgres:16-alpine (healthcheck-gated)</span>
+  │    ├─ wiremock :8089           <span class="c">// progression / refdata / CaTH / docgen stubs</span>
+  │    └─ azurite  :10000          <span class="c">// blob storage emulator</span>
+  └─ Test task                     <span class="c">// REST-assured vs localhost:8082/courtlistpublishing-service</span>
+<span class="mg">// captureContainersOutput=true → app logs interleave into the Gradle/Actions job log</span></code></pre>
+
+  <h3>Dedicated IT workflow (drop-in)</h3>
+<pre><code><span class="mg">name:</span> Integration Tests
+<span class="mg">on:</span>
+  pull_request: { branches: [ main ] }
+  workflow_dispatch:
+
+<span class="mg">jobs:</span>
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v5
+        with: { gradle-version: current }
+      - name: Warm image cache              <span class="c"># optional anti-flake measure</span>
+        run: |
+          docker pull postgres:16-alpine
+          docker pull wiremock/wiremock:3.9.1
+          docker pull mcr.microsoft.com/azure-storage/azurite:3.34.0
+      - name: Run integration tests
+        run: gradle integration
+      - name: Tear down stack
+        if: always()                        <span class="c"># Gradle leaves stack up by design</span>
+        run: docker compose -f docker/docker-compose.integration.yml down -v
+      - name: Upload IT report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with: { name: integration-test-report, path: build/reports/tests/integration }</code></pre>
+
+  <h3>Failure triage protocol</h3>
+  <ul class="spec">
+    <li>Container logs are already in the Actions job log (capture is on) — read the app's stack trace there first.</li>
+    <li>If composeUp failed: check the 120 s <code>--wait</code> budget vs the app healthcheck on <code>/courtlistpublishing-service/actuator/health</code>.</li>
+    <li>Download <code>build/reports/tests/integration</code> artifact for the HTML report.</li>
+    <li>Reproduce locally with the identical command — the compose stack is environment-invariant.</li>
+  </ul>
+</section>
+
+<footer>DWG CP-CLP-001 · ALT 3/4 — NEON BLUEPRINT · SOURCES: BUILD.GRADLE / .GITHUB/WORKFLOWS / DOCKER / SRC · 2026-06-13</footer>
+
+</div>
+</body>
+</html>

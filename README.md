@@ -4,6 +4,8 @@ This repository provides a template for building Spring Boot applications. While
 
 It includes essential configurations, dependencies, and recommended practices to help teams get started quickly.
 
+newline
+
 **Note:** This template is not a framework, nor is it intended to evolve into one. It simply leverages the Spring ecosystem and proven libraries from the wider engineering community.
 
 As HMCTS services are hosted on Azure, the included dependencies reflect this. Our aim is to stay as close to the cloud as possible in order to maximise alignment with the Shared Responsibility Model and achieve optimal security and operability.

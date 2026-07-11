@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cp-court-list-publishing-service — man page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,600;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060a06;
+    --bg-raised: #0a120b;
+    --phos: #46ff7d;
+    --phos-dim: #2a9e51;
+    --phos-faint: #17522c;
+    --amber: #ffb347;
+    --amber-dim: #8a5f23;
+    --txt: #b8e6c4;
+    --line: #143820;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--txt);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    position: relative;
+  }
+  /* CRT scanlines + vignette */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px);
+    pointer-events: none; z-index: 9999;
+  }
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%);
+    pointer-events: none; z-index: 9998;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 48px 28px 120px; }
+
+  header.crt {
+    border: 1px solid var(--phos-faint);
+    background: var(--bg-raised);
+    padding: 28px 32px;
+    margin-bottom: 56px;
+    box-shadow: 0 0 40px rgba(70,255,125,.06), inset 0 0 60px rgba(70,255,125,.03);
+  }
+  .promptline { color: var(--phos-dim); font-size: 13px; margin-bottom: 18px; }
+  .promptline b { color: var(--phos); font-weight: 600; }
+  h1 {
+    color: var(--phos);
+    font-size: clamp(22px, 4vw, 34px);
+    font-weight: 800;
+    letter-spacing: -.5px;
+    text-shadow: 0 0 14px rgba(70,255,125,.45);
+    margin-bottom: 8px;
+  }
+  h1 .cursor { display: inline-block; width: .6em; height: 1.05em; background: var(--phos); vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .tagline { color: var(--txt); max-width: 70ch; }
+  .meta { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    border: 1px solid var(--phos-faint); color: var(--phos-dim);
+    padding: 2px 10px; font-size: 12px;
+  }
+  .chip.hot { border-color: var(--amber-dim); color: var(--amber); }
+
+  nav.toc { margin-bottom: 64px; color: var(--phos-dim); font-size: 13px; }
+  nav.toc a { color: var(--phos-dim); text-decoration: none; }
+  nav.toc a:hover { color: var(--phos); text-shadow: 0 0 8px rgba(70,255,125,.5); }
+  nav.toc .idx { color: var(--phos-faint); }
+
+  section { margin-bottom: 80px; }
+  h2 {
+    color: var(--phos);
+    font-size: 15px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 24px;
+    text-shadow: 0 0 10px rgba(70,255,125,.35);
+  }
+  h2::before { content: "## "; color: var(--phos-faint); }
+  h2::after {
+    content: ""; display: block; margin-top: 10px;
+    border-bottom: 1px dashed var(--line);
+  }
+  h3 { color: var(--phos); font-size: 13px; font-weight: 600; margin: 26px 0 10px; }
+  h3::before { content: "» "; color: var(--amber); }
+  p { margin-bottom: 14px; max-width: 78ch; }
+  a { color: var(--amber); }
+  strong { color: var(--phos); font-weight: 600; }
+  code.k {
+    color: var(--amber); background: rgba(255,179,71,.07);
+    padding: 1px 5px; font-size: 13px;
+  }
+  pre {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--phos-dim);
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--txt);
+    margin: 18px 0;
+  }
+  pre .c { color: var(--phos-dim); }      /* comment */
+  pre .g { color: var(--phos); }          /* green emphasis */
+  pre .a { color: var(--amber); }         /* amber emphasis */
+
+  ol.steps { list-style: none; counter-reset: step; max-width: 80ch; }
+  ol.steps li {
+    counter-increment: step;
+    padding: 12px 0 12px 58px;
+    position: relative;
+    border-bottom: 1px dotted var(--line);
+  }
+  ol.steps li::before {
+    content: "[" counter(step, decimal-leading-zero) "]";
+    position: absolute; left: 0; top: 12px;
+    color: var(--amber); font-weight: 600;
+  }
+  ul.flat { list-style: none; max-width: 80ch; }
+  ul.flat li { padding: 7px 0 7px 26px; position: relative; }
+  ul.flat li::before { content: "*"; position: absolute; left: 6px; color: var(--phos); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 16px 0; }
+  th, td { border: 1px solid var(--line); padding: 8px 14px; text-align: left; vertical-align: top; }
+  th { color: var(--phos); background: var(--bg-raised); font-weight: 600; }
+  td code.k { white-space: nowrap; }
+
+  /* ====== distinct CI section: amber phosphor ====== */
+  section.ci {
+    border: 1px solid var(--amber-dim);
+    background: linear-gradient(180deg, rgba(255,179,71,.05), transparent 30%);
+    padding: 36px 36px 28px;
+    box-shadow: 0 0 50px rgba(255,179,71,.05);
+  }
+  section.ci h2 { color: var(--amber); text-shadow: 0 0 10px rgba(255,179,71,.4); }
+  section.ci h2::before { content: "%% "; color: var(--amber-dim); }
+  section.ci h2::after { border-color: var(--amber-dim); }
+  section.ci h3::before { color: var(--phos); }
+  section.ci pre { border-left-color: var(--amber); }
+  section.ci .chip { border-color: var(--amber-dim); color: var(--amber); }
+
+  footer { color: var(--phos-faint); font-size: 12px; border-top: 1px dashed var(--line); padding-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="crt">
+  <div class="promptline"><b>baris@hmcts</b>:~/gitrepos$ man cp-court-list-publishing-service</div>
+  <h1>CP-COURT-LIST-PUBLISHING-SERVICE(7)<span class="cursor"></span></h1>
+  <p class="tagline">Publishes magistrates' court lists to <strong>CaTH</strong> (Court and Tribunal Hearings) and generates the printable PDF — fetch, transform, sanitize, validate, publish, store.</p>
+  <div class="meta">
+    <span class="chip">Java 21</span>
+    <span class="chip">Spring Boot 4.0.0</span>
+    <span class="chip">Gradle</span>
+    <span class="chip">PostgreSQL 16 + Flyway</span>
+    <span class="chip">Azure Blob / Azurite</span>
+    <span class="chip hot">Modern-by-Default (not CQRS)</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <span class="idx">SECTIONS:</span>
+  <a href="#synopsis">1.SYNOPSIS</a> ·
+  <a href="#tree">2.TREE</a> ·
+  <a href="#lifecycle">3.LIFECYCLE</a> ·
+  <a href="#abstractions">4.ABSTRACTIONS</a> ·
+  <a href="#gotchas">5.GOTCHAS</a> ·
+  <a href="#start">6.WHERE-TO-START</a> ·
+  <a href="#ci">7.GITHUB-ACTIONS &amp; INTEGRATION-TESTS</a>
+</nav>
+
+<section id="synopsis">
+  <h2>Synopsis</h2>
+  <p>This is an HMCTS <strong>"Modern by Default"</strong> Spring Boot service, scaffolded from <code class="k">service-hmcts-crime-springboot-template</code>. It is <strong>not</strong> one of the CQRS/event-sourced <code class="k">cpp-context-*</code> WildFly services: no Maven, no RAML, no event store. One deployable, one Postgres status table, contract-first REST.</p>
+  <p>The job it does: when a court clerk (holding the <strong>Publish Magistrate Court List</strong> permission) triggers a publish, the service pulls the court-list payload from the <strong>Progression</strong> query API, transforms it into the CaTH publication document format, scrubs it (HTML stripping + WAF pattern sanitization), validates it against a JSON Schema, posts it to <strong>CaTH</strong> through Azure APIM, renders a PDF via the Document Generator, and parks the PDF in <strong>Azure Blob Storage</strong> for download. Publish status is tracked in the <code class="k">court_list_publish_status</code> table.</p>
+  <p>The REST contract is <strong>generated from an OpenAPI spec artifact</strong> — <code class="k">uk.gov.hmcts.cp:api-cp-crime-court-list-publisher:0.1.22</code> — so controllers implement generated interfaces rather than declaring their own routes.</p>
+</section>
+
+<section id="tree">
+  <h2>Tree</h2>
+<pre>
+cp-court-list-publishing-service/
+├── build.gradle                <span class="c"># sourceSets for integrationTest + pactVerificationTest,</span>
+│                               <span class="c">#   docker-compose plugin, publishing to GH Packages + ADO</span>
+├── gradle.properties           <span class="c"># pins: apiSpecVersion=0.1.22, jobManagerVersion, filters</span>
+├── src/main/java/uk/gov/hmcts/cp/
+│   ├── <span class="g">Application.java</span>        <span class="c"># Spring Boot entry point</span>
+│   ├── controllers/            <span class="c"># CourtListPublishController, FileController,</span>
+│   │                           <span class="c">#   GlobalExceptionHandler, RootController</span>
+│   ├── services/               <span class="c"># transformation, CaTH publish, PDF, blob, ref-data</span>
+│   │   └── sanitization/       <span class="c"># HtmlStrippingSanitizer, WafPatternSanitizer</span>
+│   ├── task/                   <span class="c"># <span class="a">CourtListPublishAndPDFGenerationTask</span> (async job)</span>
+│   ├── models/                 <span class="c"># inbound payload models (Hearing, Defendant, ...)</span>
+│   │   ├── transformed/        <span class="c"># CaTH CourtListDocument output models</span>
+│   │   └── transformed/schema/ <span class="c"># schema-shaped DTOs (CourtList, Sitting, ...)</span>
+│   ├── domain/ repositories/   <span class="c"># CourtListStatusEntity + JPA repository</span>
+│   ├── filters/jwt/  acl/      <span class="c"># JWTFilter, permission + security-group constants</span>
+│   └── config/                 <span class="c"># Azure, JPA, TaskManager, CORS, audit wiring</span>
+├── src/main/resources/
+│   ├── application-*.yml       <span class="c"># profile slices: azure, authz, audit, datasource, jwt</span>
+│   ├── db/migration/           <span class="c"># Flyway V1001__...court_list_publish_status</span>
+│   └── schema/                 <span class="c"># standard + online-public court-list JSON Schemas</span>
+├── src/test/                   <span class="c"># unit tests + stubdata payloads</span>
+├── src/integrationTest/        <span class="c"># HTTP black-box ITs + wiremock/ mappings + __files</span>
+├── src/pactVerificationTest/   <span class="c"># Pact provider verification (hmcts-dts.pactflow.io)</span>
+├── docker/
+│   ├── Dockerfile              <span class="c"># app image; COPYs the bootJar</span>
+│   └── docker-compose.integration.yml  <span class="c"># app + db + wiremock + azurite</span>
+└── .github/workflows/          <span class="c"># GitHub Actions CI/CD — see §7</span>
+</pre>
+</section>
+
+<section id="lifecycle">
+  <h2>Lifecycle</h2>
+  <p>Trace of one publish request, entry to output:</p>
+  <ol class="steps">
+    <li><code class="k">POST /courtlistpublishing-service/courtlistpublish</code> lands on <strong>CourtListPublishController</strong> (implements generated <code class="k">CourtListPublishApi</code>). The filter chain runs first: <code class="k">JWTFilter</code>, then <code class="k">cp-auth-rules-filter</code> enforcing the <strong>Publish Magistrate Court List</strong> permission. A <code class="k">CJSCPPUID</code> header is mandatory — missing means 400.</li>
+    <li><strong>CourtListPublishStatusService.createOrUpdate</strong> upserts a row in <code class="k">court_list_publish_status</code> (Flyway-managed) keyed by court centre / list type / date range, returning a <code class="k">courtListId</code>.</li>
+    <li><strong>CourtListTaskTriggerService</strong> enqueues <code class="k">PUBLISH_AND_PDF_GENERATION_TASK</code> via the shared <code class="k">task-manager-service</code> library. The HTTP response returns immediately — everything else is asynchronous.</li>
+    <li>The task (<strong>CourtListPublishAndPDFGenerationTask</strong>, annotated <code class="k">@Task</code>) wakes up, reads jobData (courtListId, list type, court centre, publish date, userId) and calls <strong>CourtListQueryService → Progression query API</strong> for the raw payload.</li>
+    <li>Transformation: <strong>StandardCourtListTransformationService</strong> or <strong>OnlinePublicCourtListTransformationService</strong> (strategy by <code class="k">CourtListType</code>), enriching rooms and LJA details through <strong>ReferenceDataService</strong>.</li>
+    <li><strong>CourtListDocumentSanitizer</strong> scrubs every string (HTML stripping, WAF-trigger patterns; <code class="k">RequiredStringFieldsRegistry</code> guards mandatory fields), then <strong>JsonSchemaValidatorService</strong> validates the document against <code class="k">schema/standard-court-list-schema.json</code> or <code class="k">schema/online-public-court-list-schema.json</code>.</li>
+    <li><strong>CaTHService / CaTHPublisher</strong> POSTs the document to CaTH via APIM — gated by <code class="k">cath.publishing-enabled</code> (a <code class="k">StubCourtListPublisher</code> stands in when disabled).</li>
+    <li><strong>CourtListPdfHelper → DocumentGeneratorClient</strong> renders the PDF; <strong>AzureBlobService</strong> uploads it to the blob container (Azurite locally).</li>
+    <li>Status flips to <code class="k">PUBLISH_SUCCESSFUL</code> / failure state; <strong>FileController</strong> + <strong>CourtListDownloadService</strong> stream the PDF back as <code class="k">CourtList.pdf</code>.</li>
+  </ol>
+</section>
+
+<section id="abstractions">
+  <h2>Abstractions</h2>
+  <ul class="flat">
+    <li><strong>Generated API interfaces</strong> — <code class="k">CourtListPublishApi</code> et al. come from the versioned OpenAPI artifact. To change the contract, bump <code class="k">apiSpecVersion</code> in <code class="k">gradle.properties</code>; never hand-edit routes.</li>
+    <li><strong>ExecutableTask / @Task</strong> — the task-manager-service abstraction for durable async jobs. The string ID <code class="k">PUBLISH_AND_PDF_GENERATION_TASK</code> binds trigger to executor.</li>
+    <li><strong>Transformation strategies</strong> — <code class="k">BaseCourtListTransformationService</code> with Standard and OnlinePublic variants; output is the CaTH-shaped <code class="k">CourtListDocument</code> tree in <code class="k">models/transformed</code>.</li>
+    <li><strong>Sanitizer chain</strong> — <code class="k">HtmlStrippingSanitizer</code> + <code class="k">WafPatternSanitizer</code> behind <code class="k">CourtListDocumentSanitizer</code>; defence against hostile free-text leaking into public documents.</li>
+    <li><strong>Schema validation gate</strong> — <code class="k">JsonSchemaValidatorService</code> (everit) is the last quality gate before anything leaves for CaTH.</li>
+    <li><strong>CourtListStatusEntity</strong> — the single JPA entity; one table tracks the whole publish lifecycle.</li>
+    <li><strong>Profile-sliced config</strong> — <code class="k">application-azure/authz/audit/datasource/jwt.yml</code>; the <code class="k">integration</code> profile rewires everything at WireMock + Azurite.</li>
+  </ul>
+</section>
+
+<section id="gotchas">
+  <h2>Gotchas</h2>
+  <ul class="flat">
+    <li>The README is largely the <strong>template's</strong> README — it links a <code class="k">docs/</code> directory that does not exist in this repo. Trust <code class="k">build.gradle</code> over the README.</li>
+    <li><strong>No <code class="k">runIntegrationTests.sh</code> here.</strong> The workspace-wide CQRS conventions don't apply. ITs run via <code class="k">gradle integration</code>; and note <code class="k">gradle build</code> runs unit <em>and</em> integration tests (<code class="k">build dependsOn integration</code>).</li>
+    <li><strong>Docker must be up</strong> before <code class="k">gradle integration</code> — a <code class="k">checkDockerDaemon</code> gate fails fast. Ports: app <code class="k">8082</code> (remote debug <code class="k">8787→5005</code>), WireMock <code class="k">8089</code>, Postgres <code class="k">55432</code>, Azurite <code class="k">10000</code>.</li>
+    <li><code class="k">composeDown</code> is intentionally commented out — the stack <strong>stays up after ITs</strong> for debugging; next <code class="k">composeUp</code> recreates it.</li>
+    <li>The committed Azurite account key is Microsoft's <strong>public dev key</strong> (<code class="k"># gitleaks:allow</code>) — not a leak; override only for real storage accounts.</li>
+    <li>Compiler runs with <code class="k">-Werror</code>; PMD (ruleset in <code class="k">.github/pmd-ruleset.xml</code>) gates PRs via the code-analysis workflow.</li>
+    <li>CI pre-pulls <code class="k">azurite:3.33.0</code> but compose uses <code class="k">3.34.0</code> — harmless drift; the pre-pull is only a cache-warmer.</li>
+    <li>Auth, audit, and CaTH publishing are all <strong>feature-flagged</strong> (<code class="k">CP_CLP_AUTHZ_ENABLED</code>, <code class="k">CP_CLP_AUDIT_ENABLED</code>, <code class="k">CATH_PUBLISHING_ENABLED</code>) — ITs disable authz/audit and enable CaTH against WireMock.</li>
+  </ul>
+</section>
+
+<section id="start">
+  <h2>Where-to-start</h2>
+  <ol class="steps">
+    <li><code class="k">build.gradle</code> — the whole machine: source sets, compose wiring, publishing.</li>
+    <li><code class="k">controllers/CourtListPublishController.java</code> — the front door and the async hand-off.</li>
+    <li><code class="k">task/CourtListPublishAndPDFGenerationTask.java</code> — the real pipeline, end to end.</li>
+    <li><code class="k">services/CaTHService.java</code> + the two transformation services — the domain heart.</li>
+    <li><code class="k">src/integrationTest/.../CaTHPublishingIntegrationTest.java</code> with <code class="k">docker/docker-compose.integration.yml</code> open beside it — the executable spec of how everything talks.</li>
+  </ol>
+</section>
+
+<!-- ============ DISTINCT SECTION: CI ============ -->
+<section id="ci" class="ci">
+  <h2>GitHub-Actions &amp; Integration-Tests</h2>
+  <p>This repo ships its CI on <strong>GitHub Actions</strong> (deploys still hop to Azure DevOps at the end). Six workflows live in <code class="k">.github/workflows/</code>:</p>
+  <table>
+    <tr><th>Workflow</th><th>Trigger</th><th>What it does</th></tr>
+    <tr><td><code class="k">ci-draft.yml</code></td><td>PR + push to main</td><td>Calls the reusable pipeline. On PR: build only. On push: build + publish + deploy.</td></tr>
+    <tr><td><code class="k">ci-released.yml</code></td><td>Release published / manual</td><td>Same reusable pipeline with <code class="k">is_release=true</code> → release versioning.</td></tr>
+    <tr><td><code class="k">ci-build-publish.yml</code></td><td><code class="k">workflow_call</code> only</td><td>The reusable core: Artefact-Version → Build → Provider-Deploy → Deploy.</td></tr>
+    <tr><td><code class="k">code-analysis.yml</code></td><td>PR</td><td>PMD via <code class="k">pmd/pmd-github-action</code>; fails on violations.</td></tr>
+    <tr><td><code class="k">codeql.yml</code> / <code class="k">secrets-scanner.yml</code></td><td>scheduled / PR</td><td>CodeQL static analysis; secret scanning.</td></tr>
+  </table>
+
+  <h3>The reusable pipeline, job by job</h3>
+  <ol class="steps">
+    <li><strong>Artefact-Version</strong> — <code class="k">hmcts/artefact-version-action</code> mints a draft or release version (drives <code class="k">-DARTEFACT_VERSION</code>).</li>
+    <li><strong>Build</strong> — Temurin JDK 21 + <code class="k">gradle/actions/setup-gradle</code>, pre-pulls the compose images, then runs <code class="k">gradle build</code> — which, because <code class="k">build → check → integration</code>, <strong>runs the full integration suite inside CI</strong>. The bootJar is uploaded as the <code class="k">app-jar</code> artifact.</li>
+    <li><strong>Provider-Deploy</strong> — <code class="k">gradle publish</code> to GitHub Packages and the Azure DevOps <code class="k">hmcts-lib</code> feed (needs <code class="k">AZURE_DEVOPS_ARTIFACT_USERNAME/TOKEN</code> secrets).</li>
+    <li><strong>Deploy</strong> — <code class="k">hmcts/trigger-ado-pipeline</code> kicks ADO pipeline <code class="k">460</code> with the artefact coordinates (needs <code class="k">HMCTS_ADO_PAT</code>).</li>
+  </ol>
+
+  <h3>How integration tests actually run on a runner</h3>
+  <p>There is no Testcontainers magic at IT level — the Avast <code class="k">docker-compose</code> Gradle plugin drives <code class="k">docker/docker-compose.integration.yml</code> directly. <code class="k">ubuntu-latest</code> runners ship with Docker, so <code class="k">gradle integration</code> just works:</p>
+<pre>
+<span class="c"># what `gradle integration` does on the runner:</span>
+<span class="g">bootJar</span>                          <span class="c"># build the app jar (compose COPYs it into the image)</span>
+<span class="g">composeBuild + composeUp</span>         <span class="c"># docker compose up --wait --wait-timeout 120</span>
+   ├── app       :8082          <span class="c"># Spring profile: integration, authz/audit OFF</span>
+   ├── db        :55432         <span class="c"># postgres:16-alpine, healthcheck-gated</span>
+   ├── wiremock  :8089          <span class="c"># plays progression / refdata / CaTH / docgen stubs</span>
+   └── azurite   :10000         <span class="c"># local Azure Blob</span>
+<span class="g">integration (Test task)</span>          <span class="c"># REST-assured against http://localhost:8082/...</span>
+<span class="c"># composeDown deliberately NOT finalized — stack stays up for debugging</span>
+</pre>
+  <p>WireMock mappings under <code class="k">src/integrationTest/resources/wiremock/</code> are volume-mounted in, so the app's outbound calls (Progression, reference data, CaTH, document generator) are all stubbed on the runner. <code class="k">captureContainersOutput = true</code> streams container logs into the Gradle output — when an IT fails in Actions, <strong>the app's own log is right there in the job log</strong>.</p>
+
+  <h3>Running ITs as a dedicated workflow</h3>
+  <p>Today ITs piggyback on <code class="k">gradle build</code>. If you want them as their own job (separate status check, retries without rebuilding), this is the complete workflow:</p>
+<pre>
+<span class="a">name:</span> Integration Tests
+<span class="a">on:</span>
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:        <span class="c"># manual re-runs from the Actions tab</span>
+
+<span class="a">jobs:</span>
+  integration:
+    runs-on: ubuntu-latest  <span class="c"># Docker + compose v2 preinstalled</span>
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v5
+        with: { gradle-version: current }
+
+      - name: Warm Docker image cache   <span class="c"># optional; avoids pull flakiness</span>
+        run: |
+          docker pull postgres:16-alpine
+          docker pull wiremock/wiremock:3.9.1
+          docker pull mcr.microsoft.com/azure-storage/azurite:3.34.0
+
+      - name: Run integration tests
+        run: gradle integration         <span class="c"># composeUp + ITs, nothing else</span>
+
+      - name: Tear down stack
+        if: always()                    <span class="c"># composeDown is not finalized in Gradle</span>
+        run: docker compose -f docker/docker-compose.integration.yml down -v
+
+      - name: Upload IT report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: integration-test-report
+          path: build/reports/tests/integration
+</pre>
+  <p><strong>Debug checklist for a red IT job:</strong> (1) read the inlined container logs in the Gradle output; (2) check the <code class="k">--wait-timeout 120</code> didn't expire — the app healthcheck polls <code class="k">/courtlistpublishing-service/actuator/health</code>; (3) download the IT report artifact; (4) reproduce locally with the exact same command — the compose file is identical on laptop and runner.</p>
+</section>
+
+<footer>
+  generated 2026-06-13 · sources: build.gradle, .github/workflows/*, docker/docker-compose.integration.yml, src/ · alt 1/4 — phosphor terminal
+</footer>
+
+</div>
+</body>
+</html>
