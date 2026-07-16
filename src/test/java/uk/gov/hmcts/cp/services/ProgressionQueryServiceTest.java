@@ -60,7 +60,7 @@ class ProgressionQueryServiceTest {
     }
 
     @Test
-    void getCourtListPayload_usesPrisonAcceptHeaderAndOmitsListIdForPrison() {
+    void getCourtListPayload_usesPrisonAcceptHeaderAndSendsListIdPrison() {
         when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(), eq(String.class)))
                 .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
 
@@ -80,7 +80,8 @@ class ProgressionQueryServiceTest {
 
         assertThat(entityCaptor.getValue().getHeaders().getFirst("Accept"))
                 .isEqualTo("application/vnd.progression.search.prison.court.list.data+json");
-        assertThat(uriCaptor.getValue().getQuery()).doesNotContain("listId");
+        // progression /courtlistdata requires listId for every type; prison is selected by the Accept header.
+        assertThat(uriCaptor.getValue().getQuery()).contains("listId=PRISON");
     }
 
     @Test
