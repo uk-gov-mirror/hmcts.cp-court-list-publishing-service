@@ -202,9 +202,25 @@ class CourtListDownloadServiceTest {
     }
 
     @Test
+    void generateCourtListDownloadRendersPdfForPrisonUsingRegisteredTemplate() throws IOException {
+        String payloadJson = "{\"listType\":\"prison\"}";
+        stubListingPayload(CourtListType.PRISON, null, payloadJson);
+        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("PrisonCourtList")))
+                .thenReturn(PDF_BYTES);
+
+        CourtListFileResult result = service.generateCourtListDownload(
+                CourtListType.PRISON, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
+
+        assertThat(result.content()).isEqualTo(PDF_BYTES);
+        assertThat(result.contentType()).isEqualTo(PDF_CONTENT_TYPE);
+        assertThat(result.filename()).isEqualTo("CourtList.pdf");
+        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("PrisonCourtList"));
+    }
+
+    @Test
     void generateCourtListDownloadRejectsUnsupportedTypeBeforeCallingListing() {
         assertThatThrownBy(() -> service.generateCourtListDownload(
-                CourtListType.PRISON, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false))
+                CourtListType.ONLINE_PUBLIC, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false))
                 .isInstanceOf(CourtListDownloadException.class)
                 .hasMessageContaining("Unsupported court list type for download");
         verifyNoInteractions(courtListDataService);

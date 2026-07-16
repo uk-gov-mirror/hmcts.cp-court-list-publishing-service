@@ -45,7 +45,8 @@ public class CourtListDataService {
             CourtListType.BENCH,
             CourtListType.ONLINE_PUBLIC,
             CourtListType.USHERS_CROWN,
-            CourtListType.USHERS_MAGISTRATE);
+            CourtListType.USHERS_MAGISTRATE,
+            CourtListType.PRISON);
 
     private final ProgressionQueryService progressionQueryService;
     private final RestTemplate publicCourtListRestTemplate;

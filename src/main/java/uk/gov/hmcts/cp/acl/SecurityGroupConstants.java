@@ -21,6 +21,9 @@ public final class SecurityGroupConstants {
     public static final String NON_CPS_PROSECUTORS = "Non CPS Prosecutors";
     public static final String DISTRICT_JUDGE = "District Judge";
     public static final String SYSTEM_USERS = "System Users";
+    public static final String PRISON_ADMIN = "Prison Admin";
+    public static final String CTSC_ADMIN = "CTSC Admin";
+    public static final String OPERATIONAL_DELIVERY_ADMIN = "Operational Delivery Admin";
 
     private SecurityGroupConstants() {
     }
@@ -42,5 +45,16 @@ public final class SecurityGroupConstants {
      */
     public static String[] getSystemUserOnlyRoles() {
         return new String[]{ SYSTEM_USERS };
+    }
+
+    /**
+     * Groups allowed to download the prison court list (courtlistpublishing-service prison download).
+     * Mirrors progression's {@code progression.search.prison.court.list.data} access-control groups.
+     */
+    public static String[] getPrisonListRoles() {
+        return new String[]{
+                PRISON_ADMIN, LISTING_OFFICERS, LEGAL_ADVISERS, COURT_CLERKS,
+                CTSC_ADMIN, OPERATIONAL_DELIVERY_ADMIN
+        };
     }
 }

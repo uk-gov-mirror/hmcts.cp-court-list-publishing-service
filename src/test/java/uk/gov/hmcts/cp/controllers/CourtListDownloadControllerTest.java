@@ -41,6 +41,8 @@ class CourtListDownloadControllerTest {
     private static final String START_DATE = "2026-02-27";
     private static final String END_DATE = "2026-02-27";
     private static final String DOWNLOAD_URL = "/api/court-list-publish/download";
+    private static final String PRISON_DOWNLOAD_URL = "/api/court-list-publish/prison/download";
+    private static final String PRISON_DOWNLOAD_ACCEPT = "application/vnd.courtlistpublishing-service.prison-download.get+json";
     private static final String CJSCPPUID_HEADER = "CJSCPPUID";
     private static final String CJSCPPUID_VALUE = "a085e359-6069-4694-8820-7810e7dfe762";
     private static final String DOWNLOAD_ACCEPT = "application/vnd.courtlistpublishing-service.download.get+json";
@@ -205,6 +207,56 @@ class CourtListDownloadControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"CourtList.pdf\""))
                 .andExpect(content().bytes(PDF_BYTES));
+    }
+
+    @Test
+    void downloadCourtListRejectsPrisonTypeOnGenericEndpoint() throws Exception {
+        mockMvc.perform(get(DOWNLOAD_URL)
+                        .header("Accept", DOWNLOAD_ACCEPT)
+                        .header(CJSCPPUID_HEADER, CJSCPPUID_VALUE)
+                        .param("courtCentreId", COURT_CENTRE_ID)
+                        .param("startDate", START_DATE)
+                        .param("endDate", END_DATE)
+                        .param("courtListType", "PRISON"))
+                .andExpect(status().isBadRequest());
+
+        verify(courtListDownloadService, org.mockito.Mockito.never()).generateCourtListDownload(
+                any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void downloadPrisonCourtListReturnsPdf() throws Exception {
+        CourtListFileResult result = new CourtListFileResult(PDF_BYTES, "application/pdf", "CourtList.pdf");
+        when(courtListDownloadService.generateCourtListDownload(
+                eq(CourtListType.PRISON),
+                eq(COURT_CENTRE_ID),
+                isNull(),
+                any(LocalDate.class),
+                any(LocalDate.class),
+                eq(CJSCPPUID_VALUE),
+                eq(false)))
+                .thenReturn(result);
+
+        mockMvc.perform(get(PRISON_DOWNLOAD_URL)
+                        .header("Accept", PRISON_DOWNLOAD_ACCEPT)
+                        .header(CJSCPPUID_HEADER, CJSCPPUID_VALUE)
+                        .param("courtCentreId", COURT_CENTRE_ID)
+                        .param("startDate", START_DATE)
+                        .param("endDate", END_DATE))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"CourtList.pdf\""))
+                .andExpect(content().bytes(PDF_BYTES));
+    }
+
+    @Test
+    void downloadPrisonCourtListReturns400WhenCjscppuidHeaderMissing() throws Exception {
+        mockMvc.perform(get(PRISON_DOWNLOAD_URL)
+                        .header("Accept", PRISON_DOWNLOAD_ACCEPT)
+                        .param("courtCentreId", COURT_CENTRE_ID)
+                        .param("startDate", START_DATE)
+                        .param("endDate", END_DATE))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

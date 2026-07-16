@@ -2,6 +2,7 @@ package uk.gov.hmcts.cp.acl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -140,6 +141,47 @@ class CourtListPublishingAccessControlTest {
     @Test
     void downloadGet_shouldDenyUnauthorisedUser() {
         Action action = new Action(DOWNLOAD_GET, Map.of());
+
+        Outcome outcome = evaluateRule(action);
+
+        assertThat(outcome.isSuccess()).isFalse();
+    }
+
+    // --- prison download (dedicated action + media type, prison-list roles only) ---
+
+    private static final String PRISON_DOWNLOAD_GET = "courtlistpublishing-service.prison-download.get";
+
+    @Test
+    void prisonDownload_shouldAllowPrisonListRole() {
+        Action action = new Action(PRISON_DOWNLOAD_GET, Map.of());
+        given(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
+                SecurityGroupConstants.getPrisonListRoles())).willReturn(true);
+
+        Outcome outcome = evaluateRule(action);
+
+        assertThat(outcome.isSuccess()).isTrue();
+    }
+
+    @Test
+    void prisonDownload_shouldDenyUserWithoutPrisonListRole() {
+        Action action = new Action(PRISON_DOWNLOAD_GET, Map.of());
+        given(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
+                SecurityGroupConstants.getPrisonListRoles())).willReturn(false);
+
+        Outcome outcome = evaluateRule(action);
+
+        assertThat(outcome.isSuccess()).isFalse();
+    }
+
+    @Test
+    void prisonDownload_shouldNotBeGrantedByGenericDownloadRule() {
+        // The prison action is not in the generic download rule's name list, so general publishing
+        // membership must not grant it. Only getPrisonListRoles() can.
+        Action action = new Action(PRISON_DOWNLOAD_GET, Map.of());
+        lenient().when(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
+                SecurityGroupConstants.getPublishingRoles())).thenReturn(true);
+        given(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups(action,
+                SecurityGroupConstants.getPrisonListRoles())).willReturn(false);
 
         Outcome outcome = evaluateRule(action);
 

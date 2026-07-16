@@ -122,27 +122,17 @@ public class CourtListPublishController implements CourtListPublishApi {
             CourtListType courtListType,
             UUID courtRoomId,
             Boolean restricted) {
-        if (courtCentreId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "courtCentreId is required");
-        }
-        if (startDate == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate is required (format: yyyy-MM-dd)");
-        }
-        if (endDate == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate is required (format: yyyy-MM-dd)");
-        }
+        validateDownloadParams(courtCentreId, startDate, endDate);
         if (courtListType == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "courtListType is required");
         }
-        if (endDate.isBefore(startDate)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must be on or after startDate");
+        if (courtListType == CourtListType.PRISON) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Prison court lists must be downloaded via " + CourtListPublishApi.PATH_DOWNLOAD_PRISON_COURT_LIST);
         }
+        final String cjscppuid = requireCjscppuid();
         LOG.atInfo().log("downloadCourtList called with courtCentreId={}, startDate={}, endDate={}, courtListType={}, courtRoomId={}, restricted={}",
                 courtCentreId, startDate, endDate, courtListType, courtRoomId, restricted);
-        String cjscppuid = getCjscppuidFromRequest();
-        if (cjscppuid == null || cjscppuid.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CJSCPPUID header is required");
-        }
         Optional<CourtCentreData> courtCentreDataOpt = referenceDataService.getCourtCenterDataByCourtCentreId(
                 courtCentreId.toString(), cjscppuid);
         boolean isCrownCourt = courtCentreDataOpt.isPresent() && isCrownCourt(courtCentreDataOpt.get());
@@ -163,12 +153,39 @@ public class CourtListPublishController implements CourtListPublishApi {
                         courtRoomId != null ? courtRoomId.toString() : null,
                         startDate, endDate, cjscppuid, Boolean.TRUE.equals(restricted));
             }
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType(result.contentType()));
-            headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + result.filename() + "\"");
-            return ResponseEntity.ok().headers(headers).body(new ByteArrayResource(result.content()));
+            return toFileResponse(result);
         } catch (CourtListDownloadException e) {
             LOG.warn("Court list download error: {}", Encode.forJava(e.getMessage()));
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage());
+        }
+    }
+
+    /**
+     * Dedicated prison court list download. Access to this path is restricted to prison-list roles
+     * by the Drools ACL ({@code acl/court-list-publishing-rules.drl}) which keys on the request path,
+     * preserving progression's prison-vs-standard authorisation split at the publishing tier.
+     */
+    @Override
+    public ResponseEntity<Resource> downloadPrisonCourtList(
+            final String accept,
+            final UUID courtCentreId,
+            final LocalDate startDate,
+            final LocalDate endDate,
+            final UUID courtRoomId) {
+        validateDownloadParams(courtCentreId, startDate, endDate);
+        final String cjscppuid = requireCjscppuid();
+        LOG.atInfo().log("downloadPrisonCourtList called with courtCentreId={}, startDate={}, endDate={}, courtRoomId={}",
+                courtCentreId, startDate, endDate, courtRoomId);
+        try {
+            // Prison lists are never restricted-filtered and always render locally via the prison template.
+            final CourtListFileResult result = courtListDownloadService.generateCourtListDownload(
+                    CourtListType.PRISON,
+                    courtCentreId.toString(),
+                    courtRoomId != null ? courtRoomId.toString() : null,
+                    startDate, endDate, cjscppuid, false);
+            return toFileResponse(result);
+        } catch (CourtListDownloadException e) {
+            LOG.warn("Prison court list download error: {}", Encode.forJava(e.getMessage()));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, e.getMessage());
         }
     }
@@ -239,6 +256,39 @@ public class CourtListPublishController implements CourtListPublishApi {
             return servletAttrs.getRequest().getHeader(AppConstant.CJSCPPUID);
         }
         return null;
+    }
+
+    /** Validates the query parameters common to every court list download. */
+    private static void validateDownloadParams(final UUID courtCentreId, final LocalDate startDate, final LocalDate endDate) {
+        if (courtCentreId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "courtCentreId is required");
+        }
+        if (startDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate is required (format: yyyy-MM-dd)");
+        }
+        if (endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate is required (format: yyyy-MM-dd)");
+        }
+        if (endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must be on or after startDate");
+        }
+    }
+
+    /** Returns the caller's CJSCPPUID, or throws 400 when the header is absent. */
+    private static String requireCjscppuid() {
+        final String cjscppuid = getCjscppuidFromRequest();
+        if (cjscppuid == null || cjscppuid.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CJSCPPUID header is required");
+        }
+        return cjscppuid;
+    }
+
+    /** Wraps a generated court list file in a download response (attachment + content type). */
+    private static ResponseEntity<Resource> toFileResponse(final CourtListFileResult result) {
+        final HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(result.contentType()));
+        headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + result.filename() + "\"");
+        return ResponseEntity.ok().headers(headers).body(new ByteArrayResource(result.content()));
     }
 
     private static boolean isCrownCourt(CourtCentreData courtCentreData) {

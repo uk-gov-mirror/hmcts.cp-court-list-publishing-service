@@ -55,6 +55,7 @@ public class CourtListDownloadService {
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.JUDGE, "JudgeList");
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.USHERS_CROWN, "UshersCrownList");
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.USHERS_MAGISTRATE, "UshersMagistrateList");
+        FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.PRISON, "PrisonCourtList");
     }
 
     private static final Set<CourtListType> SUPPORTED_TYPES = FALLBACK_TEMPLATE_BY_TYPE.keySet();

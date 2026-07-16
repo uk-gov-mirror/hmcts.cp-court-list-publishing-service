@@ -126,6 +126,20 @@ class CourtListDataServiceTest {
     }
 
     @Test
+    void getCourtListDataRoutesPrisonThroughProgression() {
+        when(progressionQueryService.getCourtListPayload(
+                eq(CourtListType.PRISON), anyString(), any(), anyString(), anyString(), anyBoolean(), anyString(), anyBoolean()))
+                .thenReturn("{\"listType\":\"prison\"}");
+
+        courtListDataService.getCourtListData(
+                CourtListType.PRISON, "courtCentre", null, "2026-01-05", "2026-01-12", false, "user", false);
+
+        verify(progressionQueryService).getCourtListPayload(
+                eq(CourtListType.PRISON), eq("courtCentre"), any(), eq("2026-01-05"), eq("2026-01-12"), eq(false), eq("user"), eq(false));
+        verifyNoInteractions(publicCourtListRestTemplate);
+    }
+
+    @Test
     void getCourtListDataRoutesUshersMagistrateThroughProgression() {
         when(progressionQueryService.getCourtListPayload(
                 eq(CourtListType.USHERS_MAGISTRATE), anyString(), any(), anyString(), anyString(), anyBoolean(), anyString(), anyBoolean()))
