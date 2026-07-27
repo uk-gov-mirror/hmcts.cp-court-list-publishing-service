@@ -43,14 +43,6 @@ then
   $o.setSuccess(true);
 end
 
-rule "Allow – test-auth (public access)"
-when
-  $o: Outcome()
-  $a: Action(name == "courtlistpublishing-service.test-auth.post")
-then
-  $o.setSuccess(true);
-end
-
 rule "Allow – public-court-list"
 when
   $o: Outcome()

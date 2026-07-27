@@ -188,15 +188,15 @@ class CourtListPublishingAccessControlTest {
         assertThat(outcome.isSuccess()).isFalse();
     }
 
-    // --- test-auth.post (public access, no group check) ---
+    // --- test-auth.post (rule removed under LPT-2389: was testing-only public access) ---
 
     @Test
-    void testAuthPost_shouldAllowAnyUser() {
+    void testAuthPost_shouldBeDenied() {
         Action action = new Action(TEST_AUTH_POST, Map.of());
 
         Outcome outcome = evaluateRule(action);
 
-        assertThat(outcome.isSuccess()).isTrue();
+        assertThat(outcome.isSuccess()).isFalse();
     }
 
     // --- public-court-list.get ---
