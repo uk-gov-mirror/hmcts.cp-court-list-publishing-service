@@ -17,7 +17,6 @@ import ch.qos.logback.classic.Logger;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -673,6 +672,35 @@ class CourtListPublishAndPDFGenerationTaskTest {
         verify(repository, times(2)).save(entity);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = CourtListType.class, names = {"PUBLIC", "STANDARD", "BENCH"})
+    void execute_shouldGeneratePdfAndSetFileId_forProgressionPdfType(CourtListType progressionType) {
+        JsonObject jobData = Json.createObjectBuilder()
+                .add(JobDataConstant.COURT_LIST_ID, courtListId.toString())
+                .add(JobDataConstant.COURT_CENTRE_ID, courtCentreId.toString())
+                .add(JobDataConstant.COURT_LIST_TYPE, progressionType.name())
+                .add(JobDataConstant.PUBLISH_DATE, LocalDate.now().toString())
+                .add(JobDataConstant.USER_ID, TEST_USER_ID)
+                .build();
+        when(executionInfo.getJobData()).thenReturn(jobData);
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
+
+        CourtListPayload payload = new CourtListPayload();
+        when(courtListQueryService.getCourtListPayload(any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(payload);
+        when(courtListQueryService.buildCourtListDocumentFromPayload(payload, progressionType))
+                .thenReturn(CourtListDocument.builder().build());
+        when(pdfHelper.generateAndUploadPdf(payload, courtListId, progressionType)).thenReturn(courtListId);
+
+        ExecutionInfo result = task.execute(executionInfo);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getExecutionStatus()).isEqualTo(COMPLETED);
+
+        verify(pdfHelper).generateAndUploadPdf(payload, courtListId, progressionType);
+        assertThat(entity.getFileStatus()).isEqualTo(Status.SUCCESSFUL);
+        assertThat(entity.getFileId()).isEqualTo(courtListId);
+    }
 
     @Test
     void execute_shouldIncrementPublishCount_whenFileStatusBecomesSuccessful() {

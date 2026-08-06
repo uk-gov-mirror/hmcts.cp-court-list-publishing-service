@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/progression-service/query/api/rest/progression/courtlist",
+    "queryParameters": {
+      "listId": {"equalTo": "BENCH"}
+    },
+    "headers": {
+      "Accept": {"equalTo": "application/vnd.progression.search.court.list+json"},
+      "CJSCPPUID": {"matches": ".+"}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/pdf"},
+    "bodyFileName": "minimal-pdf.pdf"
+  },
+  "priority": 2
+}

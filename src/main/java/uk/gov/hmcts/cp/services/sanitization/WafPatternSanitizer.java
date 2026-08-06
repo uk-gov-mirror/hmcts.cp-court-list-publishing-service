@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  *
  * <p>Each match is replaced with a single space. Whitespace cleanup is left to
  * {@link HtmlStrippingSanitizer}, which runs after this sanitiser in
- * {@link CourtListDocumentSanitizer}, so any space gaps left behind here are
+ * {@link DocumentSanitizer}, so any space gaps left behind here are
  * collapsed back to a single space and trimmed in the same pass that handles
  * HTML stripping.
  *

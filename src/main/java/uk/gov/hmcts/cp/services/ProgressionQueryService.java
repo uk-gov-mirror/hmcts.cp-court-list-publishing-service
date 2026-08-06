@@ -68,12 +68,10 @@ public class ProgressionQueryService {
                 .queryParam("startDate", startDate)
                 .queryParam("endDate", endDate)
                 .queryParam("restricted", restricted)
-                .queryParam("includeApplications", includeApplications);
-        if (PRISON.equals(listId.name())) {
-            // Prison list: no listId query param, use prison Accept
-        } else {
-            builder.queryParam("listId", listId.name());
-        }
+                .queryParam("includeApplications", includeApplications)
+                // listId is required by progression /courtlistdata for every list type, including PRISON;
+                // the prison variant is selected by the Accept media type, not by omitting listId.
+                .queryParam("listId", listId.name());
         if (courtRoomId != null && !courtRoomId.isBlank()) {
             builder.queryParam("courtRoomId", courtRoomId);
         }

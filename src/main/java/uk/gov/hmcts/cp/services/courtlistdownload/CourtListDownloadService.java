@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.services.CourtListDataService;
 import uk.gov.hmcts.cp.services.DocumentGeneratorClient;
+import uk.gov.hmcts.cp.services.TemplateInfo;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -35,6 +36,15 @@ public class CourtListDownloadService {
             CourtListType.USHERS_CROWN,
             CourtListType.USHERS_MAGISTRATE);
 
+    private static final Set<CourtListType> DELEGATED_TO_LISTING_TYPES = EnumSet.of(
+            CourtListType.ALPHABETICAL,
+            CourtListType.JUDGE);
+
+    private static final Set<CourtListType> DELEGATED_TO_PROGRESSION_TYPES = EnumSet.of(
+            CourtListType.PUBLIC,
+            CourtListType.STANDARD,
+            CourtListType.BENCH);
+
     private static final Map<CourtListType, String> FALLBACK_TEMPLATE_BY_TYPE = new EnumMap<>(CourtListType.class);
 
     static {
@@ -45,9 +55,20 @@ public class CourtListDownloadService {
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.JUDGE, "JudgeList");
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.USHERS_CROWN, "UshersCrownList");
         FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.USHERS_MAGISTRATE, "UshersMagistrateList");
+        FALLBACK_TEMPLATE_BY_TYPE.put(CourtListType.PRISON, "PrisonCourtList");
     }
 
     private static final Set<CourtListType> SUPPORTED_TYPES = FALLBACK_TEMPLATE_BY_TYPE.keySet();
+
+    private static final Map<CourtListType, TemplateInfo> CROWN_COURT_TEMPLATES = Map.of(
+            CourtListType.DRAFT,         new TemplateInfo("CrownDailyList",             "CrownDailyListWelsh"),
+            CourtListType.FINAL,         new TemplateInfo("CrownDailyList",             "CrownDailyListWelsh"),
+            CourtListType.ONLINE_PUBLIC, new TemplateInfo("CrownOnlinePublicCourtList", "CrownOnlinePublicCourtListWelsh"),
+            CourtListType.ALPHABETICAL,  new TemplateInfo("CourtList",           "CourtListEnglishWelsh"),
+            CourtListType.FIRM,          new TemplateInfo("CrownFirmList",              "CrownFirmListWelsh")
+    );
+
+    private static final Set<CourtListType> CROWN_COURT_SUPPORTED_TYPES = CROWN_COURT_TEMPLATES.keySet();
 
     private final CourtListDataService courtListDataService;
     private final DocumentGeneratorClient documentGeneratorClient;
@@ -71,6 +92,22 @@ public class CourtListDownloadService {
 
         LOG.info("Generating court list document for type={}, courtCentreId={}, startDate={}, endDate={}, restricted={}",
                 courtListType, Encode.forJava(courtCentreId), startDate, endDate, restricted);
+
+        if (DELEGATED_TO_LISTING_TYPES.contains(courtListType)) {
+            final byte[] pdf = courtListDataService.fetchCourtListPdfFromListing(
+                    courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
+            LOG.info("Court list document fetched from listing for type={}, courtCentreId={}, size={} bytes",
+                    courtListType, Encode.forJava(courtCentreId), pdf.length);
+            return new CourtListFileResult(pdf, CONTENT_TYPE_PDF, PDF_FILENAME);
+        }
+
+        if (DELEGATED_TO_PROGRESSION_TYPES.contains(courtListType)) {
+            final byte[] pdf = courtListDataService.fetchCourtListPdfFromProgression(
+                    courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
+            LOG.info("Court list document fetched from progression for type={}, courtCentreId={}, size={} bytes",
+                    courtListType, Encode.forJava(courtCentreId), pdf.length);
+            return new CourtListFileResult(pdf, CONTENT_TYPE_PDF, PDF_FILENAME);
+        }
 
         final boolean wantsWord = WORD_DOWNLOAD_TYPES.contains(courtListType);
 
@@ -107,5 +144,51 @@ public class CourtListDownloadService {
         return wantsWord
                 ? new CourtListFileResult(content, CONTENT_TYPE_WORD, WORD_FILENAME)
                 : new CourtListFileResult(content, CONTENT_TYPE_PDF, PDF_FILENAME);
+    }
+
+    public CourtListFileResult generateCrownCourtPdf(
+            final CourtListType courtListType,
+            final boolean isWelsh,
+            final String courtCentreId,
+            final String courtRoomId,
+            final LocalDate startDate,
+            final LocalDate endDate,
+            final String cjscppuid,
+            final boolean restricted) {
+
+        if (!CROWN_COURT_SUPPORTED_TYPES.contains(courtListType)) {
+            throw new CourtListDownloadException(
+                    "Unsupported court list type for crown court download: " + courtListType);
+        }
+
+        TemplateInfo templates = CROWN_COURT_TEMPLATES.get(courtListType);
+        String templateName = isWelsh ? templates.welshTemplate() : templates.englishTemplate();
+
+        LOG.info("Generating crown court PDF for type={}, isWelsh={}, template={}, courtCentreId={}, startDate={}, endDate={}",
+                courtListType, isWelsh, Encode.forJava(templateName), Encode.forJava(courtCentreId), startDate, endDate);
+
+        final String payloadJson = courtListDataService.getCrownCourtDailyListPayload(
+                courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
+
+        final JsonObject payload;
+        try (JsonReader reader = Json.createReader(new StringReader(payloadJson))) {
+            payload = reader.readObject();
+        } catch (Exception e) {
+            throw new CourtListDownloadException(
+                    "Failed to parse crown court payload JSON: " + e.getMessage(), e);
+        }
+
+        final byte[] content;
+        try {
+            content = documentGeneratorClient.generatePdf(payload, templateName);
+        } catch (IOException e) {
+            throw new CourtListDownloadException(
+                    "Failed to render crown court PDF: " + e.getMessage(), e);
+        }
+
+        LOG.info("Crown court PDF generated for type={}, template={}, courtCentreId={}, size={} bytes",
+                courtListType, Encode.forJava(templateName), Encode.forJava(courtCentreId), content.length);
+
+        return new CourtListFileResult(content, CONTENT_TYPE_PDF, PDF_FILENAME);
     }
 }

@@ -124,8 +124,9 @@ dependencies {
     implementation 'org.apache.commons:commons-text:1.14.0'
     implementation 'org.owasp.encoder:encoder:1.3.1'
     
-    // JSON Schema Validation (same as cp-framework-libraries context)
-    implementation "com.github.erosb:everit-json-schema:${everitJsonSchemaVersion}"
+    // JSON Schema Validation
+    implementation "com.networknt:json-schema-validator:${networkntJsonSchemaVersion}"
+    implementation 'commons-collections:commons-collections:3.2.2'
 
     implementation 'com.google.guava:guava:33.3.1-jre'
 

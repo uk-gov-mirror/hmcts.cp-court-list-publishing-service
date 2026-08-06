@@ -27,7 +27,7 @@ class HtmlStrippingSanitizerTest {
     @Test
     void returnsNullWhenInputIsEmpty() {
         // Empty in -> null out. Required-field presence is enforced by
-        // CourtListDocumentSanitizer after the walk; this sanitiser's job is
+        // DocumentSanitizer after the walk; this sanitiser's job is
         // only to signal "nothing meaningful left".
         assertThat(sanitizer.sanitize("")).isNull();
     }

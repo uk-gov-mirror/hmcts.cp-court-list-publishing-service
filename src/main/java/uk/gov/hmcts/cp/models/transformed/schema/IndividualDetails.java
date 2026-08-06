@@ -37,4 +37,7 @@ public class IndividualDetails {
     
     @JsonProperty("asn")
     private String asn;
+
+    @JsonProperty("pncId")
+    private String pncId;
 }

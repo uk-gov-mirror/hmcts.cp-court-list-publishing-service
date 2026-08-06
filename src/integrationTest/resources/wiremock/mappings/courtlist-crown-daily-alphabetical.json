@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/listing-service/query/api/rest/listing/courtlistpayload",
+    "queryParameters": {
+      "listId": { "equalTo": "ALPHABETICAL" }
+    },
+    "headers": {
+      "Accept": {
+        "equalTo": "application/vnd.listing.search.court.list.payload+json"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/vnd.listing.search.court.list.payload+json"
+    },
+    "bodyFileName": "court-list-payload-crown-daily.json"
+  },
+  "priority": 2
+}

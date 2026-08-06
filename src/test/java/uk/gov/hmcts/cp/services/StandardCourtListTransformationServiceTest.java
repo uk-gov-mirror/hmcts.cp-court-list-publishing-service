@@ -544,6 +544,61 @@ class StandardCourtListTransformationServiceTest {
         assertThat(app.getParty().getFirst().getIndividualDetails().getIndividualSurname()).isEqualTo("TV Licensing");
     }
 
+    @Test
+    void transform_shouldPopulatePncIdForDefendantPartyInPayloadSentToCath() {
+        // Given - a defendant carrying a PNC Id in the source payload
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.getDefendants().getFirst().setPncId("2001/0123456A");
+
+        // When
+        CourtListDocument document = transformationService.transform(payload);
+
+        // Then - the PNC Id is published in the defendant's individual details
+        IndividualDetails individualDetails = document.getCourtLists().getFirst().getCourtHouse()
+                .getCourtRoom().getFirst().getSession().getFirst().getSittings().getFirst()
+                .getHearing().getFirst().getCaseList().getFirst().getParty().getFirst().getIndividualDetails();
+        assertThat(individualDetails.getPncId()).isEqualTo("2001/0123456A");
+    }
+
+    @Test
+    void transform_shouldPopulatePncIdForApplicationPartyInPayloadSentToCath() {
+        // Given - a court application party (applicant) carrying a PNC Id in the source payload
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.setCourtApplicationId("APP-REF-12345");
+        hearing.setCourtApplication(CourtApplication.builder()
+                .applicant(CourtApplicationParty.builder()
+                        .name("Applicant Name")
+                        .dateOfBirth("1 Jan 1990")
+                        .pncId("2002/7654321B")
+                        .build())
+                .build());
+
+        // When
+        CourtListDocument document = transformationService.transform(payload);
+
+        // Then - the PNC Id is published in the application party's individual details
+        Application app = document.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst().getHearing().getFirst().getApplication().getFirst();
+        assertThat(app.getParty().getFirst().getIndividualDetails().getPncId()).isEqualTo("2002/7654321B");
+    }
+
+    @Test
+    void transform_shouldSerialisePncIdIntoJsonPayloadSentToCath() throws Exception {
+        // Given - a defendant carrying a PNC Id in the source payload
+        Hearing hearing = payload.getHearingDates().getFirst().getCourtRooms().getFirst()
+                .getTimeslots().getFirst().getHearings().getFirst();
+        hearing.getDefendants().getFirst().setPncId("2001/0123456A");
+
+        // When - the transformed document is serialised exactly as it is sent to CaTH
+        CourtListDocument document = transformationService.transform(payload);
+        String json = objectMapper.writeValueAsString(document);
+
+        // Then - the PNC Id appears in the JSON payload
+        assertThat(json).contains("\"pncId\":\"2001/0123456A\"");
+    }
+
     /**
      * Loads CourtListPayload from a stub data JSON file
      */

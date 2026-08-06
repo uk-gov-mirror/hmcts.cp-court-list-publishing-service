@@ -101,6 +101,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
                     .inCustody(null)
                     .gender(courtParty.getGender())
                     .asn(courtParty.getAsn())
+                    .pncId(courtParty.getPncId())
                     .build();
         }
         OrganisationDetails organisationDetails = null;
@@ -203,6 +204,7 @@ public class StandardCourtListTransformationService extends BaseCourtListTransfo
                     .inCustody(null) // Not available in source data
                     .gender(defendant.getGender()) // Not available in source data
                     .asn(defendant.getAsn()) // Not available in source data
+                    .pncId(defendant.getPncId())
                     .build();
         }
 

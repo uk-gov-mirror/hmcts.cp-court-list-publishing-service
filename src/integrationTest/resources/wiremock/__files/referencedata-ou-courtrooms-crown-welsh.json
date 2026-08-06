@@ -1,0 +1,23 @@
+{
+  "organisationunits": [
+    {
+      "id": "cc000000-0000-0000-0000-000000000002",
+      "oucode": "OU457",
+      "oucodeL1Code": "C",
+      "oucodeL1Name": "Crown Court",
+      "oucodeL3Name": "Test Welsh Crown Court",
+      "oucodeL3WelshName": "Llys y Goron Cymraeg",
+      "address1": "2 Crown Square",
+      "postcode": "CC2 2CC",
+      "isWelsh": true,
+      "defaultStartTime": "10:00",
+      "courtId": "002",
+      "courtroom": {
+        "id": "cc002001-0000-0000-0000-000000000002",
+        "courtroomId": 2,
+        "courtroomName": "Courtroom 1",
+        "welshCourtroomName": "Ystafell 1"
+      }
+    }
+  ]
+}

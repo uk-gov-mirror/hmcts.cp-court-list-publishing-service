@@ -4,11 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.owasp.encoder.Encode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
+import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
+import uk.gov.hmcts.cp.services.PublicationSchema;
+import uk.gov.hmcts.cp.services.SchemaValidationException;
+import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -38,19 +43,27 @@ public class SjpCourtListPublishService {
     private static final String SENSITIVITY_CLASSIFIED = "CLASSIFIED";
     private static final String DOCUMENT_NAME_PUBLIC = "SJP Public list";
     private static final String DOCUMENT_NAME_PRESS = "SJP Press list";
-
     public static final String SJP_PUBLIC_LIST = "SJP_PUBLIC_LIST";
     public static final String SJP_PRESS_LIST = "SJP_PRESS_LIST";
 
     private final SjpToCathPayloadTransformer transformer;
     private final CourtListPublisher courtListPublisher;
+    private final DocumentSanitizer documentSanitizer;
+    private final JsonSchemaValidatorService jsonSchemaValidatorService;
+    private final boolean cathPublishingEnabled;
     private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
     public SjpCourtListPublishService(
             SjpToCathPayloadTransformer transformer,
-            CourtListPublisher courtListPublisher) {
+            CourtListPublisher courtListPublisher,
+            DocumentSanitizer documentSanitizer,
+            JsonSchemaValidatorService jsonSchemaValidatorService,
+            @Value("${cath.publishing-enabled:false}") boolean cathPublishingEnabled) {
         this.transformer = transformer;
         this.courtListPublisher = courtListPublisher;
+        this.documentSanitizer = documentSanitizer;
+        this.jsonSchemaValidatorService = jsonSchemaValidatorService;
+        this.cathPublishingEnabled = cathPublishingEnabled;
     }
 
     /**
@@ -72,6 +85,11 @@ public class SjpCourtListPublishService {
             String requestType,
             Object listPayload) {
         LOG.info("SJP court list publish request for listType: {}", Encode.forJava(listType));
+
+        if (!cathPublishingEnabled) {
+            LOG.debug("CaTH publishing is disabled (CATH_PUBLISHING_ENABLED=false), skipping SJP CaTH send");
+            return SjpPublishResult.accepted(listType, "CaTH publishing is disabled");
+        }
 
         SjpListPayload payload;
         if (listPayload == null) {
@@ -99,7 +117,9 @@ public class SjpCourtListPublishService {
             String payloadLanguage = Boolean.TRUE.equals(payload.getIsWelsh()) ? "WELSH" : "ENGLISH";
             String lang = (language != null && !language.isBlank()) ? language : payloadLanguage;
 
-            String payloadJson = transformer.transform(payload, documentName);
+            String payloadJson = documentSanitizer.sanitize(transformer.transform(payload, documentName));
+            PublicationSchema schema = isPressList ? PublicationSchema.SJP_PRESS : PublicationSchema.SJP_PUBLIC;
+            jsonSchemaValidatorService.validate(payloadJson, schema);
             DtsMeta meta = buildDtsMeta(cathListType, sensitivity, lang, requestType, payload.getCourtIdNumeric());
 
             int status = courtListPublisher.publish(payloadJson, meta);
@@ -110,6 +130,9 @@ public class SjpCourtListPublishService {
                 return SjpPublishResult.accepted(listType, "SJP court list published to CaTH");
             }
             return SjpPublishResult.failed(listType, "CaTH returned status " + status);
+        } catch (SchemaValidationException e) {
+            LOG.error("SJP payload failed schema validation for listType={}: {}", listType, e.getMessage());
+            return SjpPublishResult.failed(listType, "Payload failed schema validation: " + e.getMessage());
         } catch (Exception e) {
             LOG.error("Failed to publish SJP court list to CaTH: {}", Encode.forJava(e.getMessage()), e);
             return SjpPublishResult.failed(listType, "Failed to publish to CaTH: " + e.getMessage());

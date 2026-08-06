@@ -9,6 +9,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
+import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
+import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
+import uk.gov.hmcts.cp.services.sanitization.HtmlStrippingSanitizer;
+import uk.gov.hmcts.cp.services.sanitization.RequiredStringFieldsRegistry;
+import uk.gov.hmcts.cp.services.sanitization.WafPatternSanitizer;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +21,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +30,9 @@ class SjpCourtListPublishServiceTest {
 
     @Mock
     private CourtListPublisher courtListPublisher;
+
+    @Mock
+    private JsonSchemaValidatorService jsonSchemaValidatorService;
 
     private SjpCourtListPublishService service;
 
@@ -34,9 +43,19 @@ class SjpCourtListPublishServiceTest {
             "prosecutorName", "P",
             "sjpOffences", List.of(Map.of("title", "t", "wording", "w"))));
 
+    private static final DocumentSanitizer SANITIZER = new DocumentSanitizer(
+            new WafPatternSanitizer("..\\.\\,../"),
+            new HtmlStrippingSanitizer(),
+            new RequiredStringFieldsRegistry());
+
     @BeforeEach
     void setUp() {
-        service = new SjpCourtListPublishService(new SjpToCathPayloadTransformer(), courtListPublisher);
+        service = new SjpCourtListPublishService(
+                new SjpToCathPayloadTransformer(),
+                courtListPublisher,
+                SANITIZER,
+                jsonSchemaValidatorService,
+                true);
     }
 
     // ── courtId ─────────────────────────────────────────────────────────────
@@ -133,6 +152,27 @@ class SjpCourtListPublishServiceTest {
         service.publishSjpCourtList(SjpCourtListPublishService.SJP_PUBLIC_LIST, null, null, payload);
 
         assertThat(capturePublishedMeta().getRequestType()).isNull();
+    }
+
+    // ── cath publishing disabled ─────────────────────────────────────────────
+
+    @Test
+    void publishSjpCourtList_returnsAccepted_whenCathPublishingDisabled() {
+        SjpCourtListPublishService disabledService =
+                new SjpCourtListPublishService(
+                        new SjpToCathPayloadTransformer(),
+                        courtListPublisher,
+                        SANITIZER,
+                        jsonSchemaValidatorService,
+                        false);
+
+        SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
+        SjpCourtListPublishService.SjpPublishResult result =
+                disabledService.publishSjpCourtList(SjpCourtListPublishService.SJP_PUBLIC_LIST, null, null, payload);
+
+        assertThat(result.getStatus()).isEqualTo("ACCEPTED");
+        assertThat(result.getMessage()).contains("disabled");
+        verify(courtListPublisher, never()).publish(anyString(), any(DtsMeta.class));
     }
 
     // ── guard clauses ────────────────────────────────────────────────────────

@@ -25,11 +25,9 @@ public class PdfGenerationService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PdfGenerationService.class);
 
-    private record TemplateInfo(String code, String englishTemplate, String welshTemplate) {}
-
     private static final Map<CourtListType, TemplateInfo> TEMPLATE_BY_COURT_LIST_TYPE = ImmutableMap.of(
-            CourtListType.ONLINE_PUBLIC, new TemplateInfo("ONLINE_PUBLIC", "OnlinePublicCourtList", "OnlinePublicCourtListEnglishWelsh"),
-            CourtListType.STANDARD, new TemplateInfo("STANDARD", "BenchAndStandardCourtList", "BenchAndStandardCourtList")
+            CourtListType.ONLINE_PUBLIC, new TemplateInfo("OnlinePublicCourtList", "OnlinePublicCourtListEnglishWelsh"),
+            CourtListType.STANDARD, new TemplateInfo("BenchAndStandardCourtList", "BenchAndStandardCourtList")
     );
 
     private final CourtListPublisherBlobClientService blobClientService;

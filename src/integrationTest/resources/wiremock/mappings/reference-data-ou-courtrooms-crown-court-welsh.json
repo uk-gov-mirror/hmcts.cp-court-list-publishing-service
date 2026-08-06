@@ -4,7 +4,7 @@
     "urlPath": "/referencedata-query-api/query/api/rest/referencedata/courtrooms",
     "queryParameters": {
       "courtCentreId": {
-        "matches": ".*"
+        "equalTo": "cc000000-0000-0000-0000-000000000002"
       }
     },
     "headers": {
@@ -18,7 +18,7 @@
     "headers": {
       "Content-Type": "application/vnd.referencedata.ou-courtrooms+json"
     },
-    "bodyFileName": "referencedata-ou-courtrooms-by-courtcentreid.json"
+    "bodyFileName": "referencedata-ou-courtrooms-crown-welsh.json"
   },
-  "priority": 5
+  "priority": 1
 }

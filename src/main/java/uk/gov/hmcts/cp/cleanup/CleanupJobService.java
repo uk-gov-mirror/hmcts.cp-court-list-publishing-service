@@ -34,45 +34,42 @@ public class CleanupJobService {
         log.info("Cleanup started: retentionDays={}", retentionDays);
         LocalDate cutoff = LocalDate.now().minusDays(retentionDays);
         List<CourtListStatusEntity> entities = repository.findByPublishDateBefore(cutoff);
+
+        if (entities.isEmpty()) {
+            log.info("Cleanup: no records found to delete (cutoff {})", cutoff);
+            return;
+        }
+        System.out.printf("Cleanup: found %d record(s) older than %d days ", entities.size(), retentionDays);
         log.info("Cleanup: found {} record(s) older than {} days (cutoff {})", entities.size(), retentionDays, cutoff);
 
-        for (CourtListStatusEntity entity : entities) {
-            boolean pdfOk = true;
-            UUID fileId = entity.getFileId();
-            if (fileId != null) {
-                pdfOk = deletePdfBlob(entity, fileId);
-            }
-            boolean cathJsonOk = deleteCathPayloadBlob(entity);
-            if (pdfOk && cathJsonOk) {
-                repository.delete(entity);
-                log.debug("Deleted record and blob(s) for court list {}", entity.getCourtListId());
-            }
+        entities.forEach(this::cleanupEntity);
+    }
+
+    private void cleanupEntity(CourtListStatusEntity entity) {
+        UUID fileId = entity.getFileId();
+        boolean pdfDeleted = fileId == null
+                || tryDeleteBlob(CourtListPublisherBlobClientService.buildPdfBlobName(fileId), entity.getCourtListId());
+        boolean jsonDeleted = tryDeleteBlob(CaTHService.buildBlobName(entity.getCourtListId()), entity.getCourtListId());
+
+        if (pdfDeleted && jsonDeleted) {
+            repository.delete(entity);
+            log.debug("Deleted record and blob(s) for court list {}", entity.getCourtListId());
+        } else {
+            log.warn("Cleanup: blob deletion failed for court list {} (pdfDeleted={}, jsonDeleted={}); DB record not deleted",
+                    entity.getCourtListId(), pdfDeleted, jsonDeleted);
         }
     }
 
     /**
-     * Delete PDF
+     * A blob that doesn't exist is not a failure (deleteIfExists() just no-ops); only an actual
+     * storage error counts as a failed deletion, which keeps the DB record around for a retry.
      */
-    private boolean deletePdfBlob(CourtListStatusEntity entity, UUID fileId) {
-        String blobName = CourtListPublisherBlobClientService.buildPdfBlobName(fileId);
-        try {
-            return blobContainerClient.getBlobClient(blobName).deleteIfExists();
-        } catch (Exception e) {
-            log.warn("Failed to delete PDF blob {} for court list {}: {}", blobName, entity.getCourtListId(), e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Delete CaTH JSON
-     */
-    private boolean deleteCathPayloadBlob(CourtListStatusEntity entity) {
-        String blobName = CaTHService.buildBlobName(entity.getCourtListId());
+    private boolean tryDeleteBlob(String blobName, UUID courtListId) {
         try {
             blobContainerClient.getBlobClient(blobName).deleteIfExists();
             return true;
         } catch (Exception e) {
-            log.warn("Failed to delete CaTH JSON blob {} for court list {}: {}", blobName, entity.getCourtListId(), e.getMessage());
+            log.warn("Failed to delete blob {} for court list {}: {}", blobName, courtListId, e.getMessage());
             return false;
         }
     }

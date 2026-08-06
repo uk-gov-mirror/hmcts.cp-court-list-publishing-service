@@ -9,7 +9,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import uk.gov.hmcts.cp.models.CourtListPayload;
 import uk.gov.hmcts.cp.models.transformed.CourtListDocument;
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
-import uk.gov.hmcts.cp.services.sanitization.CourtListDocumentSanitizer;
+import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
+import uk.gov.hmcts.cp.services.PublicationSchema;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,7 +35,7 @@ class CourtListQueryServiceTest {
     private JsonSchemaValidatorService jsonSchemaValidatorService;
 
     @Mock
-    private CourtListDocumentSanitizer courtListDocumentSanitizer;
+    private DocumentSanitizer courtListDocumentSanitizer;
 
     @InjectMocks
     private CourtListQueryService courtListQueryService;
@@ -58,7 +59,7 @@ class CourtListQueryServiceTest {
         // Given
         when(transformationService.transform(payload)).thenReturn(standardDocument);
         when(courtListDocumentSanitizer.sanitize(standardDocument)).thenReturn(standardDocument);
-        doNothing().when(jsonSchemaValidatorService).validate(standardDocument, "schema/standard-court-list-schema.json");
+        doNothing().when(jsonSchemaValidatorService).validate(standardDocument, PublicationSchema.STANDARD);
 
         // When
         CourtListDocument result = courtListQueryService.buildCourtListDocumentFromPayload(payload, CourtListType.STANDARD);
@@ -68,7 +69,7 @@ class CourtListQueryServiceTest {
         verify(transformationService).transform(payload);
         verify(onlinePublicCourtListTransformationService, never()).transform(any());
         verify(courtListDocumentSanitizer).sanitize(standardDocument);
-        verify(jsonSchemaValidatorService).validate(standardDocument, "schema/standard-court-list-schema.json");
+        verify(jsonSchemaValidatorService).validate(standardDocument, PublicationSchema.STANDARD);
     }
 
     @Test
@@ -76,7 +77,7 @@ class CourtListQueryServiceTest {
         // Given
         when(onlinePublicCourtListTransformationService.transform(payload)).thenReturn(onlinePublicDocument);
         when(courtListDocumentSanitizer.sanitize(onlinePublicDocument)).thenReturn(onlinePublicDocument);
-        doNothing().when(jsonSchemaValidatorService).validate(onlinePublicDocument, "schema/online-public-court-list-schema.json");
+        doNothing().when(jsonSchemaValidatorService).validate(onlinePublicDocument, PublicationSchema.ONLINE_PUBLIC);
 
         // When
         CourtListDocument result = courtListQueryService.buildCourtListDocumentFromPayload(payload, CourtListType.ONLINE_PUBLIC);
@@ -86,7 +87,7 @@ class CourtListQueryServiceTest {
         verify(onlinePublicCourtListTransformationService).transform(payload);
         verify(transformationService, never()).transform(any());
         verify(courtListDocumentSanitizer).sanitize(onlinePublicDocument);
-        verify(jsonSchemaValidatorService).validate(onlinePublicDocument, "schema/online-public-court-list-schema.json");
+        verify(jsonSchemaValidatorService).validate(onlinePublicDocument, PublicationSchema.ONLINE_PUBLIC);
     }
 
     @Test

@@ -37,6 +37,8 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
     private static final String REQUESTED_STATUS = Status.REQUESTED.toString();
     private static final String COURT_LIST_TYPE_PUBLIC = CourtListType.PUBLIC.toString();
     private static final String COURT_LIST_TYPE_FINAL = CourtListType.FINAL.toString();
+    private static final String CROWN_COURT_CENTRE_ID = "cc000000-0000-0000-0000-000000000001";
+    private static final String CROWN_COURT_CENTRE_ID_WELSH = "cc000000-0000-0000-0000-000000000002";
 
     private final RestTemplate http = new RestTemplate();
     private final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
@@ -317,37 +319,22 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         getDownloadCourtListReturnsPdfForType(CourtListType.STANDARD);
     }
 
-    @Test
-    void getDownloadCourtListForwardsRestrictedTrueToProgressionForStandard() throws Exception {
-        getDownloadCourtListReturnsPdfForType(CourtListType.STANDARD, true);
-    }
-
-    @Test
-    void getDownloadCourtListForwardsRestrictedTrueToListingForAlphabetical() throws Exception {
-        getDownloadCourtListReturnsPdfForType(CourtListType.ALPHABETICAL, true);
-    }
-
-    private String buildDownloadUrl(CourtListType courtListType, boolean restricted) {
+    private String buildDownloadUrl(CourtListType courtListType) {
         return DOWNLOAD_ENDPOINT
                 + "?courtCentreId=f8254db1-1683-483e-afb3-b87fde5a0a26"
                 + "&startDate=2026-02-27"
                 + "&endDate=2026-02-27"
-                + "&restricted=" + restricted
                 + "&courtListType=" + courtListType.name();
     }
 
     private void getDownloadCourtListReturnsPdfForType(CourtListType courtListType) throws Exception {
-        getDownloadCourtListReturnsPdfForType(courtListType, false);
-    }
-
-    private void getDownloadCourtListReturnsPdfForType(CourtListType courtListType, boolean restricted) throws Exception {
         HttpHeaders headers = new HttpHeaders();
         headers.set(CJSCPPUID_HEADER, INTEGRATION_TEST_USER_ID);
         headers.setAccept(java.util.List.of(MediaType.parseMediaType(DOWNLOAD_ACCEPT)));
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         ResponseEntity<byte[]> response = http.exchange(
-                buildDownloadUrl(courtListType, restricted),
+                buildDownloadUrl(courtListType),
                 HttpMethod.GET,
                 entity,
                 byte[].class);
@@ -363,19 +350,21 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 .as("PDF body for %s must start with %%PDF magic", courtListType)
                 .startsWith("%PDF");
         assertThat(body)
-                .as("PDF body for %s must match the WireMock-stubbed document-generator render bytes (minimal-pdf.pdf)", courtListType)
+                .as("PDF body for %s must match the WireMock-stubbed minimal-pdf.pdf bytes", courtListType)
                 .isEqualTo(loadResourceBytes("wiremock/__files/minimal-pdf.pdf"));
 
-        // The court list binary is now always rendered locally from the JSON payload via the document
-        // generator; we must never fetch a pre-rendered binary from another context. The restricted flag
-        // must be forwarded verbatim to the payload endpoint.
         if (courtListType == CourtListType.ALPHABETICAL || courtListType == CourtListType.JUDGE) {
-            verifyListingPayloadCalled(courtListType, restricted);
-        } else { // PUBLIC, STANDARD, BENCH are progression-enriched
-            verifyProgressionCourtlistDataCalled(courtListType, restricted);
+            verifyListingCourtListBinaryCalled(courtListType);
+            verifyDocumentGeneratorNotCalled();
+        } else if (courtListType == CourtListType.PUBLIC
+                || courtListType == CourtListType.STANDARD
+                || courtListType == CourtListType.BENCH) {
+            verifyProgressionCourtlistBinaryCalled(courtListType);
+            verifyDocumentGeneratorNotCalled();
+        } else {
+            verifyListingPayloadCalled(courtListType);
+            verifyDocumentGeneratorCalled(expectedTemplate(courtListType), "pdf");
         }
-        verifyDocumentGeneratorRenderedPdf();
-        verifyBinaryCourtListEndpointsNotCalled(courtListType);
     }
 
     private void getDownloadCourtListReturnsWordForType(CourtListType courtListType) throws Exception {
@@ -388,7 +377,7 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         HttpEntity<Void> entity = new HttpEntity<>(headers);
 
         ResponseEntity<byte[]> response = http.exchange(
-                buildDownloadUrl(courtListType, false),
+                buildDownloadUrl(courtListType),
                 HttpMethod.GET,
                 entity,
                 byte[].class);
@@ -405,7 +394,7 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 .as("DOCX body for %s must match every byte (and therefore every field value) of the stubbed content fixture", courtListType)
                 .isEqualTo(expectedContent.getBytes(StandardCharsets.UTF_8));
 
-        verifyProgressionCourtlistDataCalled(courtListType, false);
+        verifyProgressionCourtlistDataCalled(courtListType);
         verifyDocumentGeneratorCalled(expectedTemplate(courtListType), "docx");
     }
 
@@ -430,7 +419,7 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         }
     }
 
-    private void verifyListingPayloadCalled(CourtListType courtListType, boolean restricted) throws Exception {
+    private void verifyListingPayloadCalled(CourtListType courtListType) throws Exception {
         List<JsonNode> matches = wiremockRequestsMatching(req -> {
             if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
                 return false;
@@ -438,15 +427,15 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
             String url = wiremockRequestUrl(req);
             return url.contains("/listing-service/query/api/rest/listing/courtlistpayload")
                     && url.contains("listId=" + courtListType.name())
-                    && url.contains("restricted=" + restricted)
+                    && url.contains("restricted=false")
                     && url.contains("includeApplications=false");
         });
         assertThat(matches)
-                .as("Listing /courtlistpayload must be called exactly once for %s with restricted=%s and includeApplications=false", courtListType, restricted)
+                .as("Listing /courtlistpayload must be called exactly once for %s with restricted=false and includeApplications=false", courtListType)
                 .hasSize(1);
     }
 
-    private void verifyProgressionCourtlistDataCalled(CourtListType courtListType, boolean restricted) throws Exception {
+    private void verifyProgressionCourtlistDataCalled(CourtListType courtListType) throws Exception {
         List<JsonNode> matches = wiremockRequestsMatching(req -> {
             if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
                 return false;
@@ -454,48 +443,55 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
             String url = wiremockRequestUrl(req);
             return url.contains("/progression-service/query/api/rest/progression/courtlistdata")
                     && url.contains("listId=" + courtListType.name())
-                    && url.contains("restricted=" + restricted)
+                    && url.contains("restricted=false")
                     && url.contains("includeApplications=false");
         });
         assertThat(matches)
-                .as("Progression /courtlistdata must be called exactly once for %s with restricted=%s and includeApplications=false", courtListType, restricted)
+                .as("Progression /courtlistdata must be called exactly once for %s with restricted=false and includeApplications=false", courtListType)
                 .hasSize(1);
     }
 
-    private void verifyDocumentGeneratorRenderedPdf() throws Exception {
-        List<JsonNode> matches = wiremockRequestsMatching(req -> {
-            if (!"POST".equalsIgnoreCase(req.path("method").asText(""))) {
-                return false;
-            }
-            String url = wiremockRequestUrl(req);
-            if (!url.contains("/systemdocgenerator-command-api/command/api/rest/systemdocgenerator/render")) {
-                return false;
-            }
-            return req.path("body").asText("").contains("\"conversionFormat\":\"pdf\"");
-        });
-        assertThat(matches)
-                .as("Document generator /render must be called exactly once with conversionFormat=pdf (local rendering)")
-                .hasSize(1);
-    }
-
-    /**
-     * Asserts the pre-rendered binary court list endpoints are never called: court list binaries must be
-     * generated locally from the payload, not fetched from listing/progression.
-     */
-    private void verifyBinaryCourtListEndpointsNotCalled(CourtListType courtListType) throws Exception {
+    private void verifyProgressionCourtlistBinaryCalled(CourtListType courtListType) throws Exception {
         List<JsonNode> matches = wiremockRequestsMatching(req -> {
             if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
                 return false;
             }
             String url = wiremockRequestUrl(req);
-            boolean listingBinary = url.contains("/listing-service/query/api/rest/listing/courtlist")
-                    && !url.contains("/courtlistpayload");
-            boolean progressionBinary = url.contains("/progression-service/query/api/rest/progression/courtlist")
-                    && !url.contains("/courtlistdata");
-            return listingBinary || progressionBinary;
+            return url.contains("/progression-service/query/api/rest/progression/courtlist")
+                    && !url.contains("/courtlistdata")
+                    && url.contains("listId=" + courtListType.name())
+                    && url.contains("restricted=false");
         });
         assertThat(matches)
-                .as("No pre-rendered binary court list endpoint may be called for %s", courtListType)
+                .as("Progression /courtlist binary endpoint must be called exactly once for %s with restricted=false (default)", courtListType)
+                .hasSize(1);
+    }
+
+    private void verifyListingCourtListBinaryCalled(CourtListType courtListType) throws Exception {
+        List<JsonNode> matches = wiremockRequestsMatching(req -> {
+            if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
+                return false;
+            }
+            String url = wiremockRequestUrl(req);
+            return url.contains("/listing-service/query/api/rest/listing/courtlist")
+                    && !url.contains("/courtlistpayload")
+                    && url.contains("listId=" + courtListType.name())
+                    && url.contains("restricted=false");
+        });
+        assertThat(matches)
+                .as("Listing /courtlist binary endpoint must be called exactly once for %s with restricted=false", courtListType)
+                .hasSize(1);
+    }
+
+    private void verifyDocumentGeneratorNotCalled() throws Exception {
+        List<JsonNode> matches = wiremockRequestsMatching(req -> {
+            if (!"POST".equalsIgnoreCase(req.path("method").asText(""))) {
+                return false;
+            }
+            return wiremockRequestUrl(req).contains("/systemdocgenerator-command-api/command/api/rest/systemdocgenerator/render");
+        });
+        assertThat(matches)
+                .as("Document generator /render must not be called when listing renders the PDF")
                 .isEmpty();
     }
 
@@ -552,6 +548,139 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
             return req.get("url").asText("");
         }
         return req.path("absoluteUrl").asText("");
+    }
+
+    // Crown court tests
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenDraftAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.DRAFT, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenFinalAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.FINAL, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenAlphabeticalAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.ALPHABETICAL, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenOnlinePublicAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.ONLINE_PUBLIC, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenFirmAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.FIRM, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenAlphabeticalAndWelshCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.ALPHABETICAL, CROWN_COURT_CENTRE_ID_WELSH, true);
+    }
+
+    private String buildCrownCourtDownloadUrl(CourtListType courtListType, String courtCentreId) {
+        return DOWNLOAD_ENDPOINT
+                + "?courtCentreId=" + courtCentreId
+                + "&startDate=2026-02-27"
+                + "&endDate=2026-02-27"
+                + "&courtListType=" + courtListType.name();
+    }
+
+    private void getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType courtListType, String courtCentreId, boolean isWelsh) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(CJSCPPUID_HEADER, INTEGRATION_TEST_USER_ID);
+        headers.setAccept(java.util.List.of(MediaType.parseMediaType(DOWNLOAD_ACCEPT)));
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<byte[]> response = http.exchange(
+                buildCrownCourtDownloadUrl(courtListType, courtCentreId),
+                HttpMethod.GET,
+                entity,
+                byte[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PDF);
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .contains("attachment", "CourtList.pdf");
+        byte[] body = response.getBody();
+        assertThat(body).as("PDF body for %s must be non-null", courtListType).isNotNull();
+        assertThat(body.length).as("PDF body for %s must be non-empty", courtListType).isGreaterThan(0);
+        assertThat(new String(body, 0, Math.min(4, body.length)))
+                .as("PDF body for %s must start with %%PDF magic", courtListType)
+                .startsWith("%PDF");
+        assertThat(body)
+                .as("PDF body for %s must match the WireMock-stubbed minimal-pdf.pdf bytes", courtListType)
+                .isEqualTo(loadResourceBytes("wiremock/__files/minimal-pdf.pdf"));
+
+        verifyCrownDailyListPayloadCalled(courtListType);
+        verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+    }
+
+    private void verifyCrownDailyListPayloadCalled(CourtListType courtListType) throws Exception {
+        if (CourtListType.ALPHABETICAL.equals(courtListType)) {
+            List<JsonNode> matches = wiremockRequestsMatching(req -> {
+                if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
+                    return false;
+                }
+                String url = wiremockRequestUrl(req);
+                return url.contains("/listing-service/query/api/rest/listing/courtlistpayload")
+                        && url.contains("listId=" + courtListType.name());
+            });
+            assertThat(matches)
+                    .as("Crown alphabetical /courtlistpayload must be called exactly once for %s", courtListType)
+                    .hasSize(1);
+        } else {
+            List<JsonNode> matches = wiremockRequestsMatching(req -> {
+                if (!"GET".equalsIgnoreCase(req.path("method").asText(""))) {
+                    return false;
+                }
+                String url = wiremockRequestUrl(req);
+                return url.contains("/listing-service/query/api/rest/listing/dailylistpayload")
+                        && url.contains("publishCourtListType=" + courtListType.name());
+            });
+            assertThat(matches)
+                    .as("Crown daily list /dailylistpayload must be called exactly once for %s", courtListType)
+                    .hasSize(1);
+
+            String url = wiremockRequestUrl(matches.get(0));
+            if (CourtListType.FIRM.equals(courtListType)) {
+                assertThat(url)
+                        .as("FIRM /dailylistpayload call must use weekCommencing date params")
+                        .contains("weekCommencingStartDate=", "weekCommencingEndDate=")
+                        .doesNotContain("&startDate=", "&endDate=");
+            } else {
+                assertThat(url)
+                        .as("Non-FIRM /dailylistpayload call must use plain startDate/endDate params")
+                        .contains("&startDate=", "&endDate=")
+                        .doesNotContain("weekCommencingStartDate=", "weekCommencingEndDate=");
+            }
+        }
+    }
+
+    private static String expectedCrownTemplate(CourtListType type, boolean isWelsh) {
+        if (isWelsh) {
+            switch (type) {
+                case DRAFT:
+                case FINAL:       return "CrownDailyListWelsh";
+                case ONLINE_PUBLIC: return "CrownOnlinePublicCourtListWelsh";
+                case ALPHABETICAL: return "CourtListEnglishWelsh";
+                case FIRM:        return "CrownFirmListWelsh";
+                default: throw new IllegalArgumentException("No crown Welsh template for " + type);
+            }
+        } else {
+            switch (type) {
+                case DRAFT:
+                case FINAL:       return "CrownDailyList";
+                case ONLINE_PUBLIC: return "CrownOnlinePublicCourtList";
+                case ALPHABETICAL: return "CourtList";
+                case FIRM:        return "CrownFirmList";
+                default: throw new IllegalArgumentException("No crown template for " + type);
+            }
+        }
     }
 
 }

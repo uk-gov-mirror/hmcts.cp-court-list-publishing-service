@@ -11,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.HttpClientErrorException;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
+import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
+import uk.gov.hmcts.cp.services.PublicationSchema;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.client.RestTemplate;
@@ -21,6 +23,7 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
@@ -51,6 +54,7 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
     private static final long POLL_MS = 200;
 
     private final RestTemplate http = new RestTemplate();
+    private final JsonSchemaValidatorService schemaValidator = new JsonSchemaValidatorService();
 
     @BeforeEach
     void resetWireMockBefore() {
@@ -72,12 +76,12 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
                   {
                     "caseUrn": "URN-PUBLIC-001",
                     "defendantName": "Jane Smith",
-                    "firstName": "Jane",
+                    "firstName": "J",
                     "lastName": "Smith",
                     "dateOfBirth": "1990-01-15",
                     "addressLine1": "10 Main Street",
                     "town": "Manchester",
-                    "postcode": "M1 1AA",
+                    "postcode": "M1",
                     "prosecutorName": "Crown Prosecution Service",
                     "sjpOffences": [
                       {"title": "Speeding", "wording": "Drove at 50mph in a 30mph zone"}
@@ -122,13 +126,13 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
         JsonNode accused = findPartyByRole(parties, "ACCUSED");
         assertThat(accused.isMissingNode()).as("ACCUSED party should be present").isFalse();
         JsonNode individualDetails = accused.path("individualDetails");
-        assertThat(individualDetails.path("individualForenames").asText()).isEqualTo("Jane");
+        assertThat(individualDetails.path("individualForenames").asText()).isEqualTo("J");
         assertThat(individualDetails.path("individualSurname").asText()).isEqualTo("Smith");
         assertThat(individualDetails.path("dateOfBirth").asText()).isEqualTo("1990-01-15");
         JsonNode address = individualDetails.path("address");
         assertThat(address.path("line").get(0).asText()).isEqualTo("10 Main Street");
         assertThat(address.path("town").asText()).isEqualTo("Manchester");
-        assertThat(address.path("postCode").asText()).isEqualTo("M1 1AA");
+        assertThat(address.path("postCode").asText()).isEqualTo("M1");
 
         // offences
         JsonNode offences = hearing0.path("offence");
@@ -143,6 +147,11 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
         JsonNode cases = hearing0.path("case");
         assertThat(cases.isArray()).isTrue();
         assertThat(cases.get(0).path("caseUrn").asText()).isEqualTo("URN-PUBLIC-001");
+
+        // ── full schema validation ────────────────────────────────────────────
+        assertThatCode(() -> schemaValidator.validate(bodyAsString(cathReq), PublicationSchema.SJP_PUBLIC))
+                .as("CaTH payload must be valid against the SJP public schema")
+                .doesNotThrowAnyException();
 
         // ── DtsMeta headers ───────────────────────────────────────────────────
         assertThat(header(cathReq, "x-list-type")).isEqualTo("SJP_PUBLIC_LIST");
@@ -202,7 +211,12 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
         assertThat(offence0.path("offenceTitle").asText()).isEqualTo("Littering");
         assertThat(offence0.path("reportingRestriction").asBoolean()).isTrue();
 
-        // DtsMeta headers for press list
+        // ── full schema validation ────────────────────────────────────────────
+        assertThatCode(() -> schemaValidator.validate(bodyAsString(cathReq), PublicationSchema.SJP_PRESS))
+                .as("CaTH payload must be valid against the SJP press schema")
+                .doesNotThrowAnyException();
+
+        // ── DtsMeta headers ───────────────────────────────────────────────────
         assertThat(header(cathReq, "x-list-type")).isEqualTo("SJP_PRESS_LIST");
         assertThat(header(cathReq, "x-sensitivity")).isEqualTo("CLASSIFIED");
         assertThat(header(cathReq, "x-court-id")).isEqualTo("100");
@@ -420,6 +434,64 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
                 .isInstanceOf(HttpClientErrorException.class)
                 .satisfies(ex ->
                         assertThat(((HttpClientErrorException) ex).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void publishPublicList_sanitizesWafBlockedPatternsAndHtmlFromCaTHPayload() throws Exception {
+        String requestJson = """
+            {
+              "listType": "SJP_PUBLIC_LIST",
+              "listPayload": {
+                "generatedDateAndTime": "2025-06-01T09:00:00",
+                "readyCases": [
+                  {
+                    "caseUrn": "URN-SANITIZE-001",
+                    "defendantName": "Jane Smith",
+                    "lastName": "Smith../Suffix",
+                    "town": "Greater <br/> Manchester",
+                    "prosecutorName": "CPS ../Regional",
+                    "sjpOffences": [
+                      {"title": "Speeding <script>", "wording": "Drove at ../50mph in a 30 zone"}
+                    ]
+                  }
+                ]
+              }
+            }
+            """;
+
+        int cathCountBefore = listSjpCaTHRequests().size();
+        ResponseEntity<String> response = postSjpRequest(requestJson);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(objectMapper.readTree(response.getBody()).get("status").asText()).isEqualTo("ACCEPTED");
+
+        JsonNode cathReq = waitForAdditionalCaTHRequest(cathCountBefore);
+        JsonNode cathPayload = parseCaTHBody(cathReq);
+        JsonNode hearing0 = firstHearing(cathPayload);
+
+        // HTML tags and WAF path-traversal sequences must be stripped from all text fields
+
+        JsonNode prosecutor = findPartyByRole(hearing0.path("party"), "PROSECUTOR");
+        assertThat(prosecutor.path("organisationDetails").path("organisationName").asText())
+                .doesNotContain("../")
+                .isEqualTo("CPS Regional");
+
+        JsonNode accused = findPartyByRole(hearing0.path("party"), "ACCUSED");
+        JsonNode individualDetails = accused.path("individualDetails");
+        assertThat(individualDetails.path("individualSurname").asText())
+                .doesNotContain("../")
+                .isEqualTo("Smith Suffix");
+        assertThat(individualDetails.path("address").path("town").asText())
+                .doesNotContain("<br/>")
+                .isEqualTo("Greater Manchester");
+
+        JsonNode offence0 = hearing0.path("offence").path(0);
+        assertThat(offence0.path("offenceTitle").asText())
+                .doesNotContain("<script>")
+                .isEqualTo("Speeding");
+        assertThat(offence0.path("offenceWording").asText())
+                .doesNotContain("../")
+                .isEqualTo("Drove at 50mph in a 30 zone");
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

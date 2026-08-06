@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
  * a string {@code postCode}".
  *
  * <p>Replaces the previous hand-maintained map in
- * {@link CourtListDocumentSanitizer}. Adding a required string field to either
+ * {@link DocumentSanitizer}. Adding a required string field to either
  * schema is now picked up automatically — no code change required.
  *
  * <p>Scope: only string-typed required fields are surfaced. Required

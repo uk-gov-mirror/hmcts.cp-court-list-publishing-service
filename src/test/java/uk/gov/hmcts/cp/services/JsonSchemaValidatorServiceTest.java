@@ -3,6 +3,7 @@ package uk.gov.hmcts.cp.services;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
+import uk.gov.hmcts.cp.services.PublicationSchema;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.util.StreamUtils;
@@ -21,8 +22,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JsonSchemaValidatorServiceTest {
 
-    private static final String STANDARD_COURT_LIST_SCHEMA_JSON = "schema/standard-court-list-schema.json";
-    private static final String ONLINE_PUBLIC_COURT_LIST_SCHEMA_JSON = "schema/online-public-court-list-schema.json";
 
     private JsonSchemaValidatorService validatorService;
     private final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
@@ -38,7 +37,7 @@ class JsonSchemaValidatorServiceTest {
         CourtListDocument document = createMinimalValidDocument();
 
         // When/Then - should not throw exception
-        assertThatCode(() -> validatorService.validate(document, STANDARD_COURT_LIST_SCHEMA_JSON))
+        assertThatCode(() -> validatorService.validate(document, PublicationSchema.STANDARD))
                 .doesNotThrowAnyException();
     }
 
@@ -61,7 +60,7 @@ class JsonSchemaValidatorServiceTest {
         CourtListDocument document = objectMapper.readValue(invalidJson, CourtListDocument.class);
 
         // When/Then - should throw SchemaValidationException
-        assertThatThrownBy(() -> validatorService.validate(document, STANDARD_COURT_LIST_SCHEMA_JSON))
+        assertThatThrownBy(() -> validatorService.validate(document, PublicationSchema.STANDARD))
                 .isInstanceOf(SchemaValidationException.class)
                 .hasMessageContaining("JSON schema validation failed");
     }
@@ -79,7 +78,7 @@ class JsonSchemaValidatorServiceTest {
         CourtListDocument document = objectMapper.readValue(invalidJson, CourtListDocument.class);
 
         // When/Then - should throw SchemaValidationException
-        assertThatThrownBy(() -> validatorService.validate(document, STANDARD_COURT_LIST_SCHEMA_JSON))
+        assertThatThrownBy(() -> validatorService.validate(document, PublicationSchema.STANDARD))
                 .isInstanceOf(SchemaValidationException.class)
                 .hasMessageContaining("JSON schema validation failed");
     }
@@ -87,7 +86,7 @@ class JsonSchemaValidatorServiceTest {
     @Test
     void validate_shouldHandleNullDocument() {
         // When/Then - should throw SchemaValidationException for null document
-        assertThatThrownBy(() -> validatorService.validate(null, STANDARD_COURT_LIST_SCHEMA_JSON))
+        assertThatThrownBy(() -> validatorService.validate((CourtListDocument) null, PublicationSchema.STANDARD))
                 .isInstanceOf(SchemaValidationException.class)
                 .hasMessageContaining("Document cannot be null");
     }
@@ -104,7 +103,7 @@ class JsonSchemaValidatorServiceTest {
         CourtListDocument document = transformationService.transform(payload);
 
         // When/Then - validate should pass without throwing exception
-        assertThatCode(() -> validatorService.validate(document, STANDARD_COURT_LIST_SCHEMA_JSON))
+        assertThatCode(() -> validatorService.validate(document, PublicationSchema.STANDARD))
                 .doesNotThrowAnyException();
     }
 
@@ -121,7 +120,7 @@ class JsonSchemaValidatorServiceTest {
 
         // When/Then - validate should pass without throwing exception
         JsonSchemaValidatorService publicValidator = new JsonSchemaValidatorService();
-        assertThatCode(() -> publicValidator.validate(document, ONLINE_PUBLIC_COURT_LIST_SCHEMA_JSON))
+        assertThatCode(() -> publicValidator.validate(document, PublicationSchema.ONLINE_PUBLIC))
                 .doesNotThrowAnyException();
     }
 

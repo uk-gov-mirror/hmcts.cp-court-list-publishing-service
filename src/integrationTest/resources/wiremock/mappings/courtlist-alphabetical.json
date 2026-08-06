@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/listing-service/query/api/rest/listing/courtlist",
+    "queryParameters": {
+      "listId": {"equalTo": "ALPHABETICAL"}
+    },
+    "headers": {
+      "Accept": {"equalTo": "application/pdf"},
+      "CJSCPPUID": {"matches": ".+"}
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/pdf"},
+    "bodyFileName": "minimal-pdf.pdf"
+  },
+  "priority": 2
+}

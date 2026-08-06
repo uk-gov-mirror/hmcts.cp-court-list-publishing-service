@@ -46,6 +46,9 @@ public class CourtApplicationParty {
     @JsonProperty("asn")
     private String asn;
 
+    @JsonProperty("pncId")
+    private String pncId;
+
     @JsonProperty("gender")
     private String gender;
 

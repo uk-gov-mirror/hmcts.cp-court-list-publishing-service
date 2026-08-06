@@ -26,10 +26,19 @@ end
 rule "Allow – court-list-publish and download"
 when
   $o: Outcome()
-  $a: Action(name == "courtlistpublishing-service.publish.get" ||
-             name == "courtlistpublishing-service.files.download" ||
-             name == "courtlistpublishing-service.download.get")
+  $a: Action(name in ("courtlistpublishing-service.publish.get",
+                      "courtlistpublishing-service.files.download",
+                      "courtlistpublishing-service.download.get"))
   eval(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups($a, SecurityGroupConstants.getPublishingRoles()))
+then
+  $o.setSuccess(true);
+end
+
+rule "Allow – prison court-list download (Prison Admin, Listing Officers, Legal Advisers, Court Clerks, CTSC Admin, Operational Delivery Admin)"
+when
+  $o: Outcome()
+  $a: Action(name == "courtlistpublishing-service.prison-download.get")
+  eval(userAndGroupProvider.isMemberOfAnyOfTheSuppliedGroups($a, SecurityGroupConstants.getPrisonListRoles()))
 then
   $o.setSuccess(true);
 end

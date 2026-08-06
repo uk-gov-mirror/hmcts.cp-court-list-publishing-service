@@ -1,12 +1,13 @@
 package uk.gov.hmcts.cp.services;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.SpecVersion;
+import com.networknt.schema.ValidationMessage;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.everit.json.schema.Schema;
-import org.everit.json.schema.ValidationException;
-import org.everit.json.schema.loader.SchemaLoader;
-import org.json.JSONObject;
-import org.json.JSONTokener;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
@@ -14,6 +15,9 @@ import uk.gov.hmcts.cp.models.transformed.CourtListDocument;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.EnumMap;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -21,83 +25,70 @@ public class JsonSchemaValidatorService {
 
     private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
+    private final EnumMap<PublicationSchema, JsonSchema> schemaCache = new EnumMap<>(PublicationSchema.class);
 
-    /**
-     * Validates a CourtListDocument against the JSON schema.
-     *
-     * @param document the document to validate
-     * @param schemaPath the path to the JSON schema file
-     * @throws SchemaValidationException if validation fails
-     */
-    public void validate(CourtListDocument document, String schemaPath) {
+    @PostConstruct
+    void preloadSchemas() {
+        for (PublicationSchema schema : PublicationSchema.values()) {
+            schemaCache.put(schema, loadSchema(schema));
+        }
+    }
+
+    public void validate(CourtListDocument document, PublicationSchema schema) {
         if (document == null) {
             throw new SchemaValidationException("Document cannot be null");
         }
-        if (schemaPath == null || schemaPath.trim().isEmpty()) {
-            throw new SchemaValidationException("Schema path cannot be null or empty");
+        validate(() -> OBJECT_MAPPER.valueToTree(document), schema, "Failed to convert document to JSON: ");
+    }
+
+    public void validate(String json, PublicationSchema schema) {
+        if (json == null || json.isBlank()) {
+            throw new SchemaValidationException("JSON cannot be null or blank");
         }
+        validate(() -> OBJECT_MAPPER.readTree(json), schema, "JSON schema validation failed: ");
+    }
 
-        log.debug("Validating CourtListDocument against JSON schema: {}", schemaPath);
-
+    private void validate(JsonNodeSupplier jsonNodeSupplier, PublicationSchema schema, String errorPrefix) {
+        JsonNode jsonNode;
         try {
-            Schema schema = loadSchema(schemaPath);
-            JSONObject jsonObject = documentToJsonObject(document);
+            jsonNode = jsonNodeSupplier.get();
+        } catch (Exception e) {
+            throw new SchemaValidationException(errorPrefix + e.getMessage(), e);
+        }
+        validateJsonNode(jsonNode, schema);
+    }
 
-            schema.validate(jsonObject);
-            log.debug("JSON schema validation passed");
-        } catch (ValidationException e) {
+    private void validateJsonNode(JsonNode jsonNode, PublicationSchema schema) {
+        log.debug("Validating against JSON schema: {}", schema.path());
+        Set<ValidationMessage> errors = schemaCache.computeIfAbsent(schema, this::loadSchema).validate(jsonNode);
+        if (!errors.isEmpty()) {
             log.error("JSON schema validation failed");
-            String errorMessage = "JSON schema validation failed:\n" + String.join("\n", e.getAllMessages());
-            throw new SchemaValidationException(errorMessage, e);
-        } catch (IOException e) {
-            log.error("Failed to load JSON schema from {}", schemaPath, e);
-            throw new SchemaValidationException("JSON schema validation failed: " + e.getMessage(), e);
-        } catch (IllegalArgumentException e) {
-            log.error("Schema format not supported (everit 1.6.0 supports draft-04)", e);
-            throw new SchemaValidationException("JSON schema validation failed: " + e.getMessage(), e);
-        } catch (Exception e) {
-            log.error("Error during JSON schema validation", e);
-            throw new SchemaValidationException("JSON schema validation failed: " + e.getMessage(), e);
+            String messages = errors.stream()
+                    .map(ValidationMessage::getMessage)
+                    .collect(Collectors.joining("\n"));
+            throw new SchemaValidationException("JSON schema validation failed:\n" + messages);
         }
+        log.debug("JSON schema validation passed");
     }
 
-    private Schema loadSchema(String schemaPath) throws IOException {
-        ClassPathResource resource = new ClassPathResource(schemaPath);
+    @FunctionalInterface
+    private interface JsonNodeSupplier {
+        JsonNode get() throws IOException;
+    }
+
+    private JsonSchema loadSchema(PublicationSchema publicationSchema) {
+        ClassPathResource resource = new ClassPathResource(publicationSchema.path());
         if (!resource.exists()) {
-            throw new IllegalStateException("Schema file not found: " + schemaPath);
+            throw new IllegalStateException("Schema file not found: " + publicationSchema.path());
         }
-
-        try (InputStream schemaStream = resource.getInputStream()) {
-            JSONObject rawSchema = new JSONObject(new JSONTokener(schemaStream));
-            JSONObject schemaForEverit = normalizeSchemaForDraft04(rawSchema);
-            Schema schema = SchemaLoader.builder()
-                    .schemaJson(schemaForEverit)
-                    .build()
-                    .load()
-                    .build();
-            log.info("JSON schema loaded successfully from {}", schemaPath);
+        try (InputStream in = resource.getInputStream()) {
+            JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012);
+            JsonSchema schema = factory.getSchema(in);
+            log.info("JSON schema loaded and cached from {}", publicationSchema.path());
             return schema;
-        }
-    }
-
-    /**
-     * Normalizes a draft 2020-12 schema (with $defs) so everit 1.6.0 can load it.
-     * everit 1.6.0 only supports draft-04, which uses "definitions" and "http://json-schema.org/draft-04/schema#".
-     */
-    private JSONObject normalizeSchemaForDraft04(JSONObject rawSchema) {
-        String json = rawSchema.toString();
-        json = json.replace("https://json-schema.org/draft/2020-12/schema", "http://json-schema.org/draft-04/schema#");
-        json = json.replace("\"$defs\"", "\"definitions\"");
-        json = json.replace("#/$defs/", "#/definitions/");
-        return new JSONObject(json);
-    }
-
-    private JSONObject documentToJsonObject(CourtListDocument document) {
-        try {
-            String json = OBJECT_MAPPER.writeValueAsString(document);
-            return new JSONObject(json);
-        } catch (Exception e) {
-            throw new SchemaValidationException("Failed to convert document to JSON: " + e.getMessage(), e);
+        } catch (IOException e) {
+            throw new SchemaValidationException(
+                    "Failed to load JSON schema from " + publicationSchema.path() + ": " + e.getMessage(), e);
         }
     }
 }

@@ -9,16 +9,16 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class CourtListDocumentSanitizerTest {
+class DocumentSanitizerTest {
 
-    private final CourtListDocumentSanitizer sanitizer = new CourtListDocumentSanitizer(
+    private final DocumentSanitizer sanitizer = new DocumentSanitizer(
             new WafPatternSanitizer("..\\,../"),
             new HtmlStrippingSanitizer(),
             new RequiredStringFieldsRegistry());
 
     @Test
     void returnsNullWhenDocumentIsNull() {
-        assertThat(sanitizer.sanitize(null)).isNull();
+        assertThat(sanitizer.sanitize((CourtListDocument) null)).isNull();
     }
 
     @Test

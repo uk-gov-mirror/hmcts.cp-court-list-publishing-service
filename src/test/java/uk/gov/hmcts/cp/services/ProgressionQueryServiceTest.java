@@ -3,9 +3,11 @@ package uk.gov.hmcts.cp.services;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,6 +57,55 @@ class ProgressionQueryServiceTest {
 
         assertThat(result).isEqualTo(expectedJson);
         verify(restTemplate).exchange(any(URI.class), eq(HttpMethod.GET), any(), eq(String.class));
+    }
+
+    @Test
+    void getCourtListPayload_usesPrisonAcceptHeaderAndSendsListIdPrison() {
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(), eq(String.class)))
+                .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
+
+        progressionQueryService.getCourtListPayload(
+                CourtListType.PRISON,
+                "f8254db1-1683-483e-afb3-b87fde5a0a26",
+                null,
+                "2024-01-15",
+                "2024-01-15",
+                false,
+                "test-cjscppuid",
+                false);
+
+        ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
+        ArgumentCaptor<HttpEntity<?>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(uriCaptor.capture(), eq(HttpMethod.GET), entityCaptor.capture(), eq(String.class));
+
+        assertThat(entityCaptor.getValue().getHeaders().getFirst("Accept"))
+                .isEqualTo("application/vnd.progression.search.prison.court.list.data+json");
+        // progression /courtlistdata requires listId for every type; prison is selected by the Accept header.
+        assertThat(uriCaptor.getValue().getQuery()).contains("listId=PRISON");
+    }
+
+    @Test
+    void getCourtListPayload_usesStandardAcceptHeaderAndIncludesListIdForNonPrison() {
+        when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(), eq(String.class)))
+                .thenReturn(new ResponseEntity<>("{}", HttpStatus.OK));
+
+        progressionQueryService.getCourtListPayload(
+                CourtListType.STANDARD,
+                "f8254db1-1683-483e-afb3-b87fde5a0a26",
+                null,
+                "2024-01-15",
+                "2024-01-15",
+                false,
+                "test-cjscppuid",
+                false);
+
+        ArgumentCaptor<URI> uriCaptor = ArgumentCaptor.forClass(URI.class);
+        ArgumentCaptor<HttpEntity<?>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(uriCaptor.capture(), eq(HttpMethod.GET), entityCaptor.capture(), eq(String.class));
+
+        assertThat(entityCaptor.getValue().getHeaders().getFirst("Accept"))
+                .isEqualTo("application/vnd.progression.search.court.list.data+json");
+        assertThat(uriCaptor.getValue().getQuery()).contains("listId=STANDARD");
     }
 
     @Test

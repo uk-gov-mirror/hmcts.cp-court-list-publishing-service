@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.services.sanitization;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -46,7 +47,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class CourtListDocumentSanitizer {
+public class DocumentSanitizer {
 
     private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
@@ -62,6 +63,15 @@ public class CourtListDocumentSanitizer {
         sanitiseTextNodes(root);
         enforceRequiredStringFields(root);
         return OBJECT_MAPPER.convertValue(root, CourtListDocument.class);
+    }
+
+    public String sanitize(final String json) throws JsonProcessingException {
+        if (json == null || json.isBlank()) {
+            return json;
+        }
+        final JsonNode root = OBJECT_MAPPER.readTree(json);
+        sanitiseTextNodes(root);
+        return OBJECT_MAPPER.writeValueAsString(root);
     }
 
     private String sanitizeText(final String original) {

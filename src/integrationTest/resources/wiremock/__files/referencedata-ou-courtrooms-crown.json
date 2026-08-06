@@ -1,0 +1,22 @@
+{
+  "organisationunits": [
+    {
+      "id": "cc000000-0000-0000-0000-000000000001",
+      "oucode": "OU456",
+      "oucodeL1Code": "C",
+      "oucodeL1Name": "Crown Court",
+      "oucodeL3Name": "Test Crown Court",
+      "address1": "1 Crown Square",
+      "postcode": "CC1 1CC",
+      "isWelsh": false,
+      "defaultStartTime": "10:00",
+      "courtId": "001",
+      "courtroom": {
+        "id": "cc001001-0000-0000-0000-000000000001",
+        "courtroomId": 1,
+        "courtroomName": "Courtroom 1",
+        "welshCourtroomName": "Courtroom 1"
+      }
+    }
+  ]
+}
