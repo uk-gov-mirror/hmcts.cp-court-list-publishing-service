@@ -23,6 +23,7 @@ import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.AzureBlobService;
@@ -190,6 +191,36 @@ class SjpPublishTaskTest {
         assertThat(meta.getSensitivity()).isEqualTo("CLASSIFIED");
     }
 
+    // ── Delta list types: forwarded to CaTH verbatim, not collapsed to full ──
+
+    @Test
+    void execute_forwardsDeltaPublicListTypeToCaTH_insteadOfCollapsingToFull() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+        SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
+        when(executionInfo.getJobData()).thenReturn(
+                jobData(courtListId, SjpCourtListPublishService.SJP_DELTA_PUBLIC_LIST, payload, null, null));
+
+        task.execute(executionInfo);
+
+        DtsMeta meta = capturePublishedMeta();
+        assertThat(meta.getListType()).isEqualTo("SJP_DELTA_PUBLIC_LIST");
+        assertThat(meta.getSensitivity()).isEqualTo("PUBLIC");
+    }
+
+    @Test
+    void execute_forwardsDeltaPressListTypeToCaTH_andTreatsItAsPressForSensitivity() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+        SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
+        when(executionInfo.getJobData()).thenReturn(
+                jobData(courtListId, SjpCourtListPublishService.SJP_DELTA_PRESS_LIST, payload, null, null));
+
+        task.execute(executionInfo);
+
+        DtsMeta meta = capturePublishedMeta();
+        assertThat(meta.getListType()).isEqualTo("SJP_DELTA_PRESS_LIST");
+        assertThat(meta.getSensitivity()).isEqualTo("CLASSIFIED");
+    }
+
     // ── blob upload (unique-uuid, before publish, shared naming with standard flow) ──
 
     @Test
@@ -235,42 +266,17 @@ class SjpPublishTaskTest {
         verify(courtListPublisher).publish(anyString(), any(DtsMeta.class));
     }
 
-    // ── content-hash dedup ───────────────────────────────────────────────────
+    // ── repeat publish: always overwrites, no content-based dedup ───────────
 
     @Test
-    void execute_skipsBlobUploadAndPublish_whenContentUnchangedSinceLastSuccessfulPublish() throws Exception {
-        SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
-        String transformed = SANITIZER.sanitize(new SjpToCathPayloadTransformer().transform(payload, "SJP Public list"));
-        String hash = sha256(transformed);
-
-        // SjpCourtListPublishService always resets publishStatus to REQUESTED synchronously
-        // before queuing this job, so the dedup check must key off payloadHash alone, not status.
+    void execute_alwaysRepublishes_whenTriggeredAgainForSameRow_evenWithIdenticalContent() {
+        // Same as the standard flow: a repeat trigger for the same day/list type reuses and
+        // overwrites the same row (SjpCourtListPublishService resets it to REQUESTED before
+        // queuing) — the task always re-transforms, re-uploads and re-sends, no dedup-skip.
         CourtListStatusEntity entity = new CourtListStatusEntity(
                 courtListId, null, Status.REQUESTED, null,
-                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+                CourtListType.SJP_PUBLIC_FULL_ENGLISH, Instant.now());
         entity.setPublishDate(LocalDate.of(2025, 3, 9));
-        entity.setPayloadHash(hash);
-        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
-        when(executionInfo.getJobData()).thenReturn(
-                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
-
-        task.execute(executionInfo);
-
-        verify(azureBlobService, never()).uploadJson(anyString(), anyString());
-        verify(courtListPublisher, never()).publish(anyString(), any(DtsMeta.class));
-        verify(jsonSchemaValidatorService, never()).validate(anyString(), any());
-        verify(repository).save(entity);
-        assertThat(entity.getPublishStatus()).isEqualTo(Status.SUCCESSFUL);
-        assertThat(entity.getLastUpdated()).isNotNull();
-    }
-
-    @Test
-    void execute_republishes_whenContentChangedSinceLastPublish() {
-        CourtListStatusEntity entity = new CourtListStatusEntity(
-                courtListId, null, Status.SUCCESSFUL, null,
-                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
-        entity.setPublishDate(LocalDate.of(2025, 3, 9));
-        entity.setPayloadHash("stale-hash-from-previous-content");
         when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
@@ -282,16 +288,13 @@ class SjpPublishTaskTest {
         verify(azureBlobService).uploadJson(anyString(), anyString());
         verify(courtListPublisher).publish(anyString(), any(DtsMeta.class));
         assertThat(entity.getPublishStatus()).isEqualTo(Status.SUCCESSFUL);
-        assertThat(entity.getPayloadHash()).isNotEqualTo("stale-hash-from-previous-content");
     }
 
     @Test
-    void execute_stillRetries_whenNoPriorSuccessfulHashRecorded_evenIfPreviousAttemptFailed() {
-        // payloadHash is only ever written by updateSuccess, so a FAILED entity with no
-        // recorded hash (never succeeded yet) must always retry, regardless of content.
+    void execute_republishes_afterAPreviousFailure() {
         CourtListStatusEntity entity = new CourtListStatusEntity(
                 courtListId, null, Status.FAILED, null,
-                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+                CourtListType.SJP_PUBLIC_FULL_ENGLISH, Instant.now());
         entity.setPublishDate(LocalDate.of(2025, 3, 9));
         when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
@@ -312,7 +315,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(500);
         CourtListStatusEntity entity = new CourtListStatusEntity(
                 courtListId, null, Status.REQUESTED, null,
-                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+                CourtListType.SJP_PUBLIC_FULL_ENGLISH, Instant.now());
         entity.setPublishDate(LocalDate.of(2025, 3, 9));
         when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
@@ -330,7 +333,7 @@ class SjpPublishTaskTest {
         doThrow(new RuntimeException("publish failed")).when(courtListPublisher).publish(anyString(), any(DtsMeta.class));
         CourtListStatusEntity entity = new CourtListStatusEntity(
                 courtListId, null, Status.REQUESTED, null,
-                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+                CourtListType.SJP_PUBLIC_FULL_ENGLISH, Instant.now());
         entity.setPublishDate(LocalDate.of(2025, 3, 9));
         when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
@@ -369,11 +372,5 @@ class SjpPublishTaskTest {
 
         assertThat(result.getExecutionStatus()).isEqualTo(COMPLETED);
         verify(courtListPublisher, never()).publish(anyString(), any(DtsMeta.class));
-    }
-
-    private static String sha256(String content) throws Exception {
-        var digest = java.security.MessageDigest.getInstance("SHA-256");
-        byte[] hash = digest.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        return java.util.HexFormat.of().formatHex(hash);
     }
 }

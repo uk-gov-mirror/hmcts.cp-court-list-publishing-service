@@ -351,7 +351,7 @@ class CourtListPublishControllerTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                courtListType.name(),
+                courtListType,
                 Instant.now()
         );
     }
@@ -370,7 +370,7 @@ class CourtListPublishControllerTest {
                 entity.getCourtCentreId(),
                 publishStatusEnum,
                 fileStatusEnum,
-                CourtListType.valueOf(entity.getCourtListType()),
+                entity.getCourtListType(),
                 lastUpdated,
                 entity.getFileUrl(),
                 entity.getFileId(),

@@ -45,7 +45,7 @@ class CleanupJobServiceTest {
                 UUID.randomUUID(),
                 Status.SUCCESSFUL,
                 Status.SUCCESSFUL,
-                CourtListType.STANDARD.name(),
+                CourtListType.STANDARD,
                 Instant.now().minus(java.time.Duration.ofDays(RETENTION_DAYS + 10)));
         entity.setPublishDate(LocalDate.now().minusDays(RETENTION_DAYS + 10));
         entity.setFileId(fileId);
@@ -59,7 +59,7 @@ class CleanupJobServiceTest {
                 null,
                 Status.SUCCESSFUL,
                 null,
-                "SJP_PUBLIC_LIST",
+                CourtListType.SJP_PUBLIC_FULL_ENGLISH,
                 Instant.now().minus(java.time.Duration.ofDays(RETENTION_DAYS + 10)));
         entity.setPublishDate(LocalDate.now().minusDays(RETENTION_DAYS + 10));
         return entity;

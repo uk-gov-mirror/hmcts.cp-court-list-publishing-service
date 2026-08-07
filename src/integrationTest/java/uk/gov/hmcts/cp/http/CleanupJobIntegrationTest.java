@@ -231,7 +231,7 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
             ps.setNull(2, Types.OTHER);
             ps.setString(3, "SUCCESSFUL");
             ps.setNull(4, Types.VARCHAR);
-            ps.setString(5, "SJP_PUBLIC_LIST");
+            ps.setString(5, "SJP_PUBLIC_FULL_ENGLISH");
             ps.setTimestamp(6, Timestamp.from(lastUpdated));
             ps.setDate(7, Date.valueOf(publishDate));
             ps.setNull(8, Types.OTHER);

@@ -40,8 +40,8 @@ import uk.gov.hmcts.cp.services.CaTHService;
  * <p>{@link SjpCaTHPayloadIntegrationTest} already covers the CaTH payload/header content;
  * this class covers the parts specific to this change: async completion tracked in
  * {@code court_list_publish_status}, the blob upload (unique name per {@code courtListId}), and
- * content-hash dedup (repeat requests for the same dedup key don't re-upload/re-publish
- * identical content).
+ * that a repeat publish for the same dedup key reuses and overwrites the same row (same as the
+ * standard flow — no content-based dedup, even for identical content).
  */
 public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegrationTestBase {
 
@@ -98,26 +98,32 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
         try (Connection c = connection();
              PreparedStatement ps = c.prepareStatement(
                      "DELETE FROM court_list_publish_status WHERE court_centre_id IS NULL "
-                             + "AND court_list_type = 'SJP_PUBLIC_LIST' AND publish_date = ANY(?)")) {
+                             + "AND court_list_type = 'SJP_PUBLIC_FULL_ENGLISH' AND publish_date = ANY(?)")) {
             java.sql.Array dates = c.createArrayOf("date", OWN_PUBLISH_DATES.toArray());
             ps.setArray(1, dates);
             ps.executeUpdate();
         }
     }
 
+    /**
+     * The wire-level listType sent in the request. With no explicit language and no isWelsh in
+     * the payload, it resolves to ENGLISH, so the fused CourtListType persisted for the dedup
+     * key/row is always {@code SJP_PUBLIC_FULL_ENGLISH} — see {@link uk.gov.hmcts.cp.services.sjp.SjpStatusListTypeMapper}.
+     */
+    private static final String WIRE_LIST_TYPE = "SJP_PUBLIC_LIST";
+    private static final String FUSED_LIST_TYPE = "SJP_PUBLIC_FULL_ENGLISH";
+
     @Test
     void publishSjpCourtList_uploadsPayloadToBlobBeforePublishing_andTracksStatusAsSuccessful() throws Exception {
         String courtIdNumeric = "777001";
-        String listType = "SJP_PUBLIC_LIST";
         LocalDate publishDate = LocalDate.of(2025, 7, 15);
         String caseUrn = "URN-BLOB-001";
 
-        postSjpRequest(sjpRequestJson(listType, courtIdNumeric, "2025-07-15T09:00:00", caseUrn));
+        postSjpRequest(sjpRequestJson(WIRE_LIST_TYPE, courtIdNumeric, "2025-07-15T09:00:00", caseUrn));
 
-        SjpStatusRow row = waitForPublishStatus(listType, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
+        SjpStatusRow row = waitForPublishStatus(FUSED_LIST_TYPE, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
 
         assertThat(row.courtListId).isNotNull();
-        assertThat(row.payloadHash).isNotBlank();
 
         String blobName = CaTHService.buildBlobName(row.courtListId);
         assertThat(BLOB_CONTAINER.getBlobClient(blobName).exists())
@@ -133,47 +139,46 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
     @Test
     void publishSjpCourtList_reusesSameCourtListId_forSameListTypeAndDate() throws Exception {
         String courtIdNumeric = "777002";
-        String listType = "SJP_PUBLIC_LIST";
         LocalDate publishDate = LocalDate.of(2025, 7, 16);
 
-        postSjpRequest(sjpRequestJson(listType, courtIdNumeric, "2025-07-16T09:00:00", "URN-DEDUPKEY-001"));
-        SjpStatusRow first = waitForPublishStatus(listType, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
+        postSjpRequest(sjpRequestJson(WIRE_LIST_TYPE, courtIdNumeric, "2025-07-16T09:00:00", "URN-DEDUPKEY-001"));
+        SjpStatusRow first = waitForPublishStatus(FUSED_LIST_TYPE, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
 
         // Different caseUrn (different content) for the same dedup key: a genuine republish,
         // not a dedup-skip, so waiting for SUCCESSFUL again reliably means the second job ran.
-        postSjpRequest(sjpRequestJson(listType, courtIdNumeric, "2025-07-16T09:00:00", "URN-DEDUPKEY-002"));
-        waitForPublishStatusAfter(listType, publishDate, "SUCCESSFUL", first.lastUpdated, SJP_TASK_TIMEOUT_MS);
+        postSjpRequest(sjpRequestJson(WIRE_LIST_TYPE, courtIdNumeric, "2025-07-16T09:00:00", "URN-DEDUPKEY-002"));
+        waitForPublishStatusAfter(FUSED_LIST_TYPE, publishDate, "SUCCESSFUL", first.lastUpdated, SJP_TASK_TIMEOUT_MS);
 
-        List<SjpStatusRow> rows = queryAllSjpStatusRows(listType, publishDate);
+        List<SjpStatusRow> rows = queryAllSjpStatusRows(FUSED_LIST_TYPE, publishDate);
         assertThat(rows).as("dedup key should reuse the same row, not create a new one").hasSize(1);
         assertThat(rows.getFirst().courtListId).isEqualTo(first.courtListId);
     }
 
     @Test
-    void publishSjpCourtList_skipsDuplicateBlobUploadAndCaTHCall_whenContentUnchanged() throws Exception {
+    void publishSjpCourtList_alwaysRepublishes_whenTriggeredAgainForSameRow_evenWithIdenticalContent() throws Exception {
+        // Same as the standard flow: a repeat trigger for the same dedup key reuses and
+        // overwrites the same row, doing the full transform/upload/publish again — no
+        // content-based dedup, even when the content is byte-for-byte identical.
         String courtIdNumeric = "777003";
-        String listType = "SJP_PUBLIC_LIST";
         LocalDate publishDate = LocalDate.of(2025, 7, 17);
         String caseUrn = "URN-NODUP-001";
-        String requestJson = sjpRequestJson(listType, courtIdNumeric, "2025-07-17T09:00:00", caseUrn);
+        String requestJson = sjpRequestJson(WIRE_LIST_TYPE, courtIdNumeric, "2025-07-17T09:00:00", caseUrn);
 
         postSjpRequest(requestJson);
-        SjpStatusRow first = waitForPublishStatus(listType, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
+        SjpStatusRow first = waitForPublishStatus(FUSED_LIST_TYPE, publishDate, "SUCCESSFUL", SJP_TASK_TIMEOUT_MS);
         assertThat(countCathRequestsContaining(caseUrn)).isEqualTo(1);
 
-        // Same content again for the same dedup key: task should skip blob upload + CaTH publish.
-        // The synchronous accept path resets publishStatus to REQUESTED before queuing, so waiting
-        // for SUCCESSFUL again (with a changed lastUpdated) reliably signals the second job ran
-        // its dedup check (not just a false-positive read of the first job's already-SUCCESSFUL row).
+        // The synchronous accept path resets publishStatus to REQUESTED before queuing, so
+        // waiting for SUCCESSFUL again (with a changed lastUpdated) reliably signals the
+        // second job ran and completed, rather than reading the first job's stale row.
         postSjpRequest(requestJson);
-        SjpStatusRow second = waitForPublishStatusAfter(listType, publishDate, "SUCCESSFUL", first.lastUpdated, SJP_TASK_TIMEOUT_MS);
+        SjpStatusRow second = waitForPublishStatusAfter(FUSED_LIST_TYPE, publishDate, "SUCCESSFUL", first.lastUpdated, SJP_TASK_TIMEOUT_MS);
 
         assertThat(second.courtListId).isEqualTo(first.courtListId);
-        assertThat(second.payloadHash).isEqualTo(first.payloadHash);
         assertThat(second.publishStatus).isEqualTo("SUCCESSFUL");
         assertThat(countCathRequestsContaining(caseUrn))
-                .as("identical content should not be re-published to CaTH")
-                .isEqualTo(1);
+                .as("a repeat trigger republishes to CaTH again, even with identical content")
+                .isEqualTo(2);
     }
 
     // ── request helpers ──────────────────────────────────────────────────────
@@ -213,7 +218,6 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
     private static final class SjpStatusRow {
         UUID courtListId;
         String publishStatus;
-        String payloadHash;
         Timestamp lastUpdated;
     }
 
@@ -221,7 +225,7 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
     private SjpStatusRow querySjpStatusRow(String listType, LocalDate publishDate) throws SQLException {
         try (Connection c = connection();
              PreparedStatement ps = c.prepareStatement(
-                     "SELECT court_list_id, publish_status, payload_hash, last_updated FROM court_list_publish_status "
+                     "SELECT court_list_id, publish_status, last_updated FROM court_list_publish_status "
                              + "WHERE court_centre_id IS NULL AND court_list_type = ? AND publish_date = ?")) {
             ps.setString(1, listType);
             ps.setObject(2, publishDate);
@@ -238,7 +242,7 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
         List<SjpStatusRow> rows = new ArrayList<>();
         try (Connection c = connection();
              PreparedStatement ps = c.prepareStatement(
-                     "SELECT court_list_id, publish_status, payload_hash, last_updated FROM court_list_publish_status "
+                     "SELECT court_list_id, publish_status, last_updated FROM court_list_publish_status "
                              + "WHERE court_centre_id IS NULL AND court_list_type = ? AND publish_date = ?")) {
             ps.setString(1, listType);
             ps.setObject(2, publishDate);
@@ -255,7 +259,6 @@ public class SjpAsyncPublishAndBlobUploadIntegrationTest extends CourtListIntegr
         SjpStatusRow row = new SjpStatusRow();
         row.courtListId = (UUID) rs.getObject("court_list_id");
         row.publishStatus = rs.getString("publish_status");
-        row.payloadHash = rs.getString("payload_hash");
         row.lastUpdated = rs.getTimestamp("last_updated");
         return row;
     }

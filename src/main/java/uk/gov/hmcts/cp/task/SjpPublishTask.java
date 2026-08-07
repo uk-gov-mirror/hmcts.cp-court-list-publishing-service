@@ -24,12 +24,8 @@ import uk.gov.hmcts.cp.taskmanager.service.task.Task;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,9 +38,9 @@ import static uk.gov.hmcts.cp.taskmanager.domain.ExecutionStatus.COMPLETED;
  * {@link CourtListPublishAndPDFGenerationTask}'s CaTH-send step: transforms and sanitizes the
  * payload, uploads it to Azure blob storage (using the same blob-name convention as the
  * standard flow, {@link CaTHService#buildBlobName}, so the existing cleanup job already covers
- * SJP blobs) before publishing, then sends to CaTH. Skips the blob upload and CaTH send when
- * the transformed payload is unchanged since the last successful publish for the same dedup
- * key, to avoid uploading/publishing duplicate content on repeat/retry events.
+ * SJP blobs) before publishing, then sends to CaTH. A repeat publish for the same day and fused
+ * list type always re-transforms, re-uploads and re-sends, overwriting the same row — same as
+ * the standard flow, no content-based dedup.
  *
  * <p>Tracked in {@code court_list_publish_status} (shared with the standard flow) via
  * {@link CourtListStatusRepository} — {@code courtCentreId} is always null for these rows
@@ -57,14 +53,16 @@ public class SjpPublishTask implements ExecutableTask {
 
     private static final Logger logger = LoggerFactory.getLogger(SjpPublishTask.class);
 
-    private static final String CATH_LIST_TYPE_PRESS = "SJP_PRESS_LIST";
-    private static final String CATH_LIST_TYPE_PUBLIC = "SJP_PUBLIC_LIST";
     private static final String SENSITIVITY_PUBLIC = "PUBLIC";
     private static final String SENSITIVITY_CLASSIFIED = "CLASSIFIED";
     private static final String DOCUMENT_NAME_PUBLIC = "SJP Public list";
     private static final String DOCUMENT_NAME_PRESS = "SJP Press list";
     private static final String PROVENANCE = "COMMON_PLATFORM";
     private static final String TYPE_LIST = "LIST";
+
+    /** Press variants (full and delta) carry CLASSIFIED sensitivity and the press schema. */
+    private static final java.util.Set<String> PRESS_LIST_TYPES = java.util.Set.of(
+            SjpCourtListPublishService.SJP_PRESS_LIST, SjpCourtListPublishService.SJP_DELTA_PRESS_LIST);
 
     private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
@@ -127,28 +125,18 @@ public class SjpPublishTask implements ExecutableTask {
 
         SjpListPayload payload = OBJECT_MAPPER.readValue(payloadJson, SjpListPayload.class);
 
-        boolean isPressList = SjpCourtListPublishService.SJP_PRESS_LIST.equals(listType);
+        boolean isPressList = PRESS_LIST_TYPES.contains(listType);
         String documentName = isPressList ? DOCUMENT_NAME_PRESS : DOCUMENT_NAME_PUBLIC;
-        String cathListType = isPressList ? CATH_LIST_TYPE_PRESS : CATH_LIST_TYPE_PUBLIC;
+        // Forwarded to CaTH verbatim: SjpListType mirrors CaTH's ListType one-to-one, so
+        // collapsing delta variants here would make CaTH render delta content with the
+        // full-list template.
+        String cathListType = listType;
         String sensitivity = isPressList ? SENSITIVITY_CLASSIFIED : SENSITIVITY_PUBLIC;
 
         String payloadLanguage = Boolean.TRUE.equals(payload.getIsWelsh()) ? "WELSH" : "ENGLISH";
         String lang = (language != null && !language.isBlank()) ? language : payloadLanguage;
 
         String transformedPayload = documentSanitizer.sanitize(transformer.transform(payload, documentName));
-        String contentHash = sha256(transformedPayload);
-
-        // payloadHash is only ever written by updateSuccess, so a match here means this exact
-        // content already reached CaTH successfully, regardless of publishStatus — which the
-        // synchronous accept path (SjpCourtListPublishService) always resets to REQUESTED before
-        // queuing this job, so publishStatus can't be used as the dedup signal.
-        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
-        if (entity != null && contentHash.equals(entity.getPayloadHash())) {
-            logger.info("SJP payload unchanged since last successful publish for courtListId: {}, "
-                    + "skipping duplicate blob upload and CaTH publish", courtListId);
-            markUnchanged(entity);
-            return;
-        }
 
         PublicationSchema schema = isPressList ? PublicationSchema.SJP_PRESS : PublicationSchema.SJP_PUBLIC;
         jsonSchemaValidatorService.validate(transformedPayload, schema);
@@ -161,7 +149,7 @@ public class SjpPublishTask implements ExecutableTask {
                 courtListId, listType, lang, status);
 
         if (status >= 200 && status < 300) {
-            updateSuccess(courtListId, contentHash);
+            updateSuccess(courtListId);
         } else {
             updateFailure(courtListId, new RuntimeException("CaTH returned status " + status));
         }
@@ -202,24 +190,13 @@ public class SjpPublishTask implements ExecutableTask {
                 .build();
     }
 
-    private static String sha256(String content) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(content.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm not available", e);
-        }
-    }
-
-    private void updateSuccess(UUID courtListId, String contentHash) {
+    private void updateSuccess(UUID courtListId) {
         CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
         if (entity == null) {
             logger.warn("No SJP publish status record found for courtListId: {}", courtListId);
             return;
         }
         entity.setPublishStatus(Status.SUCCESSFUL);
-        entity.setPayloadHash(contentHash);
         entity.setPublishErrorMessage(null);
         entity.setLastUpdated(Instant.now());
         repository.save(entity);
@@ -233,14 +210,6 @@ public class SjpPublishTask implements ExecutableTask {
         }
         entity.setPublishStatus(Status.FAILED);
         entity.setPublishErrorMessage(buildErrorMessage(e));
-        entity.setLastUpdated(Instant.now());
-        repository.save(entity);
-    }
-
-    /** Confirms the already-published content is still current: status SUCCESSFUL, no re-upload/re-publish needed. */
-    private void markUnchanged(CourtListStatusEntity entity) {
-        entity.setPublishStatus(Status.SUCCESSFUL);
-        entity.setPublishErrorMessage(null);
         entity.setLastUpdated(Instant.now());
         repository.save(entity);
     }

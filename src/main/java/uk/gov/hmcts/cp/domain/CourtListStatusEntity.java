@@ -1,5 +1,6 @@
 package uk.gov.hmcts.cp.domain;
 
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
 import java.time.Instant;
@@ -7,6 +8,7 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 
+import jakarta.persistence.CheckConstraint;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Enumerated;
@@ -18,22 +20,24 @@ import lombok.Setter;
 import static jakarta.persistence.EnumType.STRING;
 
 /**
- * Shared by the standard/online-public court list flow and the SJP flow. {@code courtCentreId}
- * and {@code fileStatus}/{@code fileErrorMessage}/{@code fileUrl}/{@code fileId} are null for SJP
- * rows: SJP has no court-centre concept (it's a national list) and no PDF generation step.
- * {@code courtListType} is a plain string (not the {@code CourtListType} enum) so it can hold
- * either that enum's values (standard flow) or SJP's own list types (e.g. SJP_PUBLIC_LIST).
- * {@code payloadHash} supports SJP's content-hash dedup and is unused by the standard flow.
+ * Shared by the standard/online-public court list flow and the SJP flow. A repeat publish for
+ * the same key overwrites the existing row (via {@code lastUpdated}) — no content dedup.
  */
 @Getter
 @Entity
-@Table(name = "court_list_publish_status")
+@Table(name = "court_list_publish_status", check = {
+        @CheckConstraint(name = "ck_court_centre_id_required_for_non_sjp",
+                constraint = "court_centre_id IS NOT NULL OR starts_with(court_list_type, 'SJP_')"),
+        @CheckConstraint(name = "ck_file_status_required_for_non_sjp",
+                constraint = "file_status IS NOT NULL OR starts_with(court_list_type, 'SJP_')")
+})
 public class CourtListStatusEntity {
 
     @Id
     @Column(name = "court_list_id", nullable = false)
     private UUID courtListId;
 
+    /** NULL for SJP (national, no court centre); required otherwise. */
     @Setter
     @Column(name = "court_centre_id")
     private UUID courtCentreId;
@@ -43,14 +47,17 @@ public class CourtListStatusEntity {
     @Column(name = "publish_status", nullable = false)
     private Status publishStatus;
 
+    /** NULL for SJP (no file is produced). */
     @Enumerated(STRING)
     @Setter
     @Column(name = "file_status")
     private Status fileStatus;
 
+    /** For SJP rows, one of the fused SJP_* values (see SjpStatusListTypeMapper), not the CaTH wire type. */
+    @Enumerated(STRING)
     @Setter
     @Column(name = "court_list_type", nullable = false)
-    private String courtListType;
+    private CourtListType courtListType;
 
     @Setter
     @Column(name = "last_updated", nullable = false)
@@ -80,10 +87,6 @@ public class CourtListStatusEntity {
     @Column(name = "publish_count", nullable = false)
     private int publishCount;
 
-    @Setter
-    @Column(name = "payload_hash")
-    private String payloadHash;
-
     protected CourtListStatusEntity() {
     }
 
@@ -92,12 +95,12 @@ public class CourtListStatusEntity {
             final UUID courtCentreId,
             final Status publishStatus,
             final Status fileStatus,
-            final String courtListType,
+            final CourtListType courtListType,
             final Instant lastUpdated) {
         this.courtListId = Objects.requireNonNull(courtListId);
-        this.courtCentreId = courtCentreId;
+        this.courtCentreId = courtCentreId; // null for SJP - see field javadoc
         this.publishStatus = publishStatus;
-        this.fileStatus = fileStatus;
+        this.fileStatus = fileStatus;       // null for SJP - see field javadoc
         this.courtListType = Objects.requireNonNull(courtListType);
         this.lastUpdated = Objects.requireNonNull(lastUpdated);
     }

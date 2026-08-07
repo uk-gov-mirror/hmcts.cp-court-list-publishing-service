@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 
@@ -18,27 +19,27 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * Accepts SJP court list publish requests for the two in-scope event types:
+ * Accepts SJP court list publish requests for the four in-scope event types (full/delta,
+ * public/press):
  * <ul>
- *   <li>SJP_PUBLIC_LIST – triggered by public.sjp.pending-cases-public-list-generated
- *       (published to CaTH list type SJP_PUBLIC_LIST)</li>
- *   <li>SJP_PRESS_LIST   – triggered by public.sjp.pending-cases-press-list-generated
- *       (mapped to CaTH list type SJP_PRESS_LIST)</li>
+ *   <li>SJP_PUBLIC_LIST / SJP_DELTA_PUBLIC_LIST – public.sjp.pending-cases-public-list-generated</li>
+ *   <li>SJP_PRESS_LIST / SJP_DELTA_PRESS_LIST     – public.sjp.pending-cases-press-list-generated</li>
  * </ul>
  * The press transparency report (public.sjp.press-transparency-report-generated) is out of
  * scope and remains in Staging PubHub.
  *
  * <p>Validation happens synchronously; the actual transform, blob-storage upload, and CaTH
- * send are queued as an async job  SjpPublishTask via {@link SjpTaskTriggerService}),
+ * send are queued as an async job ({SjpPublishTask} via {@link SjpTaskTriggerService}),
  * matching the standard/online-public court list flow ({@code CourtListTaskTriggerService} /
- * {@code CourtListPublishAndPDFGenerationTask}). Tracking reuses
- * {@code court_list_publish_status} (the same table as the standard flow): SJP has no
- * court-centre concept, so the dedup key is (courtListType, publishDate) only, with
- * {@code courtCentreId} always null — mirroring
- * {@code CourtListPublishStatusService#createOrUpdate}'s lookup-and-reuse pattern.
+ * {@code CourtListPublishAndPDFGenerationTask}). Tracking reuses {@code court_list_publish_status}
+ * (the same table as the standard flow): SJP has no court-centre concept, so {@code courtCentreId}
+ * is always null, and the row key is the fused {@link CourtListType} (see
+ * {@link SjpStatusListTypeMapper}) plus publishDate — the fused value already encodes audience,
+ * request type and language, which is what keeps all eight daily SJP publishes on separate rows.
  */
 @Service
 public class SjpCourtListPublishService {
@@ -48,6 +49,12 @@ public class SjpCourtListPublishService {
     private static final String STATUS_FAILED = "FAILED";
     public static final String SJP_PUBLIC_LIST = "SJP_PUBLIC_LIST";
     public static final String SJP_PRESS_LIST = "SJP_PRESS_LIST";
+    public static final String SJP_DELTA_PUBLIC_LIST = "SJP_DELTA_PUBLIC_LIST";
+    public static final String SJP_DELTA_PRESS_LIST = "SJP_DELTA_PRESS_LIST";
+
+    /** The CaTH list-type vocabulary. Anything outside this set is rejected, never defaulted. */
+    private static final Set<String> KNOWN_LIST_TYPES = Set.of(
+            SJP_PUBLIC_LIST, SJP_PRESS_LIST, SJP_DELTA_PUBLIC_LIST, SJP_DELTA_PRESS_LIST);
 
     private final CourtListStatusRepository repository;
     private final SjpTaskTriggerService sjpTaskTriggerService;
@@ -66,11 +73,11 @@ public class SjpCourtListPublishService {
     /**
      * Accept an SJP court list for publishing to CaTH.
      *
-     * <p>Only request-level validation (payload shape, non-empty readyCases) happens here;
-     * the transform, blob upload, schema validation, and CaTH send all happen later in
-     * {SjpPublishTask} once the job is picked up.
+     * <p>Only request-level validation (payload shape, non-empty readyCases, known list type)
+     * happens here; the transform, blob upload, schema validation, and CaTH send all happen
+     * later in {SjpPublishTask} once the job is picked up.
      *
-     * @param listType    SJP_PUBLIC_LIST or SJP_PRESS_LIST
+     * @param listType    SJP_PUBLIC_LIST, SJP_PRESS_LIST, SJP_DELTA_PUBLIC_LIST or SJP_DELTA_PRESS_LIST
      * @param language    optional override (default: derived from listPayload.isWelsh)
      * @param requestType optional request type (e.g. "FULL"); passed through to DtsMeta
      * @param listPayload required for CaTH publish (generatedDateAndTime, readyCases); can be Map or POJO from API
@@ -86,6 +93,11 @@ public class SjpCourtListPublishService {
         if (!cathPublishingEnabled) {
             LOG.debug("CaTH publishing is disabled (CATH_PUBLISHING_ENABLED=false), skipping SJP CaTH send");
             return SjpPublishResult.accepted(listType, "CaTH publishing is disabled");
+        }
+
+        if (!KNOWN_LIST_TYPES.contains(listType)) {
+            LOG.warn("Rejecting unknown SJP list type: {}", Encode.forJava(listType));
+            return SjpPublishResult.failed(listType, "Unknown SJP list type: " + listType);
         }
 
         if (listPayload == null) {
@@ -107,7 +119,9 @@ public class SjpCourtListPublishService {
         try {
             String courtIdNumeric = normalizeCourtId(payload.getCourtIdNumeric());
             LocalDate publishDate = deriveDate(payload.getGeneratedDateAndTime());
-            UUID courtListId = findOrCreateCourtListId(listType, publishDate);
+            String lang = resolveLanguage(language, payload);
+            CourtListType fusedListType = SjpStatusListTypeMapper.toCourtListType(listType, lang);
+            UUID courtListId = findOrCreateCourtListId(fusedListType, publishDate);
 
             String payloadJson = OBJECT_MAPPER.writeValueAsString(payload);
             sjpTaskTriggerService.triggerSjpPublishTask(
@@ -123,14 +137,14 @@ public class SjpCourtListPublishService {
     }
 
     /**
-     * Looks up an existing record by (listType, publishDate) — courtCentreId is always null for
-     * SJP rows, since SJP is a national list with no court-centre concept — and reuses its
-     * {@code courtListId}, otherwise creates a new one. Same lookup-and-reuse pattern as
+     * Looks up an existing record by (publishDate, fused courtListType) — courtCentreId is always
+     * null for SJP rows, since SJP is a national list with no court-centre concept — and reuses
+     * its {@code courtListId}, otherwise creates a new one. Same lookup-and-reuse pattern as
      * {@code CourtListPublishStatusService#createOrUpdate}.
      */
-    private UUID findOrCreateCourtListId(String listType, LocalDate publishDate) {
-        Optional<CourtListStatusEntity> existing = repository.findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
-                publishDate, listType);
+    private UUID findOrCreateCourtListId(CourtListType fusedListType, LocalDate publishDate) {
+        Optional<CourtListStatusEntity> existing = repository.findByPublishDateAndCourtListType(
+                publishDate, fusedListType);
         if (existing.isPresent()) {
             CourtListStatusEntity entity = existing.get();
             entity.setPublishStatus(Status.REQUESTED);
@@ -140,7 +154,7 @@ public class SjpCourtListPublishService {
         }
         UUID courtListId = UUID.randomUUID();
         CourtListStatusEntity entity = new CourtListStatusEntity(
-                courtListId, null, Status.REQUESTED, null, listType, Instant.now());
+                courtListId, null, Status.REQUESTED, null, fusedListType, Instant.now());
         entity.setPublishDate(publishDate);
         repository.save(entity);
         return courtListId;
@@ -152,6 +166,14 @@ public class SjpCourtListPublishService {
      */
     private static String normalizeCourtId(String courtIdNumeric) {
         return courtIdNumeric != null && !courtIdNumeric.isBlank() ? courtIdNumeric : "0";
+    }
+
+    /** Explicit language argument wins; otherwise derived from listPayload.isWelsh. */
+    private static String resolveLanguage(String language, SjpListPayload payload) {
+        if (language != null && !language.isBlank()) {
+            return language;
+        }
+        return Boolean.TRUE.equals(payload.getIsWelsh()) ? "WELSH" : "ENGLISH";
     }
 
     /** Derives the dedup-key date from generatedDateAndTime, defaulting to today (UTC) if unparseable. */

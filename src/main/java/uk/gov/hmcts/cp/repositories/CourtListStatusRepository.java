@@ -1,6 +1,7 @@
 package uk.gov.hmcts.cp.repositories;
 
 import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
 import java.time.LocalDate;
@@ -25,14 +26,19 @@ public interface CourtListStatusRepository extends JpaRepository<CourtListStatus
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishStatus(UUID courtCentreId, Status publishStatus);
 
     Optional<CourtListStatusEntity> findByCourtCentreIdAndPublishDateAndCourtListType(
-            UUID courtCentreId, LocalDate publishDate, String courtListType);
+            UUID courtCentreId, LocalDate publishDate, CourtListType courtListType);
+
+    /**
+     * Locates an SJP publish-status row. SJP is national so court_centre_id is NULL, which a
+     * derived query cannot match with an equality predicate - and it adds nothing to the key
+     * anyway, because the SJP_* court list types are SJP-only and already fuse audience,
+     * request type and language.
+     */
+    Optional<CourtListStatusEntity> findByPublishDateAndCourtListType(
+            LocalDate publishDate, CourtListType courtListType);
 
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishDate(
             UUID courtCentreId, LocalDate publishDate);
-
-    /** SJP dedup lookup: SJP has no court-centre concept, so courtCentreId is always null for these rows. */
-    Optional<CourtListStatusEntity> findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
-            LocalDate publishDate, String courtListType);
 
     /** Rows belonging to the standard/online-public flow only (excludes SJP rows, which have no courtCentreId). */
     List<CourtListStatusEntity> findByCourtCentreIdIsNotNull();

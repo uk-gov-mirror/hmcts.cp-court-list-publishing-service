@@ -73,7 +73,7 @@ class CourtListPublishAndPDFGenerationTaskTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC.name(),
+                CourtListType.ONLINE_PUBLIC,
                 Instant.now()
         );
         // Initialize task with mocked dependencies (CaTH publishing enabled for tests that verify CaTH call)

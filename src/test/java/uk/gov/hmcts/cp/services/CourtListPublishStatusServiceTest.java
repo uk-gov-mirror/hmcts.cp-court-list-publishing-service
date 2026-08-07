@@ -45,7 +45,7 @@ class CourtListPublishStatusServiceTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.PUBLIC.name(),
+                CourtListType.PUBLIC,
                 Instant.now()
         );
 
@@ -102,7 +102,7 @@ class CourtListPublishStatusServiceTest {
         LocalDate startDate = LocalDate.now();
         LocalDate endDate = LocalDate.now();
 
-        when(repository.findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType.name()))
+        when(repository.findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType))
                 .thenReturn(Optional.empty());
         when(repository.save(any(CourtListStatusEntity.class))).thenAnswer(invocation -> invocation.<CourtListStatusEntity>getArgument(0));
 
@@ -117,7 +117,7 @@ class CourtListPublishStatusServiceTest {
         assertThat(result.getPublishStatus()).isEqualTo(Status.REQUESTED);
         assertThat(result.getCourtListType()).isEqualTo(courtListType);
         assertThat(result.getLastUpdated()).isNotNull();
-        verify(repository).findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType.name());
+        verify(repository).findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType);
         verify(repository).save(any(CourtListStatusEntity.class));
     }
 
@@ -135,12 +135,12 @@ class CourtListPublishStatusServiceTest {
                 courtCentreId,
                 Status.SUCCESSFUL,
                 Status.REQUESTED,
-                courtListType.name(),
+                courtListType,
                 Instant.now()
         );
         existingEntity.setPublishDate(startDate);
 
-        when(repository.findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType.name()))
+        when(repository.findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType))
                 .thenReturn(Optional.of(existingEntity));
         when(repository.save(existingEntity)).thenReturn(existingEntity);
 
@@ -155,7 +155,7 @@ class CourtListPublishStatusServiceTest {
         assertThat(result.getPublishStatus()).isEqualTo(Status.REQUESTED);
         assertThat(result.getCourtListType()).isEqualTo(courtListType);
         assertThat(result.getLastUpdated()).isNotNull();
-        verify(repository).findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType.name());
+        verify(repository).findByCourtCentreIdAndPublishDateAndCourtListType(courtCentreId, startDate, courtListType);
         verify(repository).save(existingEntity);
     }
 
@@ -239,7 +239,7 @@ class CourtListPublishStatusServiceTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.PUBLIC.name(),
+                CourtListType.PUBLIC,
                 Instant.now()
         );
         entity1.setPublishDate(publishDate);
@@ -248,7 +248,7 @@ class CourtListPublishStatusServiceTest {
                 courtCentreId,
                 Status.SUCCESSFUL,
                 Status.REQUESTED,
-                CourtListType.STANDARD.name(),
+                CourtListType.STANDARD,
                 Instant.now()
         );
         entity2.setPublishDate(publishDate);
@@ -308,7 +308,7 @@ class CourtListPublishStatusServiceTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD.name(),
+                CourtListType.STANDARD,
                 Instant.now()
         );
         CourtListStatusEntity entity2 = new CourtListStatusEntity(
@@ -316,7 +316,7 @@ class CourtListPublishStatusServiceTest {
                 UUID.randomUUID(),
                 Status.SUCCESSFUL,
                 Status.REQUESTED,
-                CourtListType.PUBLIC.name(),
+                CourtListType.PUBLIC,
                 Instant.now()
         );
 
@@ -343,7 +343,7 @@ class CourtListPublishStatusServiceTest {
                 UUID.randomUUID(),
                 Status.SUCCESSFUL,
                 Status.SUCCESSFUL,
-                CourtListType.ONLINE_PUBLIC.name(),
+                CourtListType.ONLINE_PUBLIC,
                 Instant.now()
         );
 
