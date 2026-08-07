@@ -5,14 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
-import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.AzureBlobService;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
+import uk.gov.hmcts.cp.services.CourtListStatusUpdater;
 import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
 import uk.gov.hmcts.cp.services.PublicationSchema;
 import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
@@ -22,8 +21,6 @@ import uk.gov.hmcts.cp.taskmanager.domain.ExecutionInfo;
 import uk.gov.hmcts.cp.taskmanager.service.task.ExecutableTask;
 import uk.gov.hmcts.cp.taskmanager.service.task.Task;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
@@ -66,20 +63,20 @@ public class SjpPublishTask implements ExecutableTask {
 
     private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
-    private final CourtListStatusRepository repository;
+    private final CourtListStatusUpdater statusUpdater;
     private final SjpToCathPayloadTransformer transformer;
     private final CourtListPublisher courtListPublisher;
     private final DocumentSanitizer documentSanitizer;
     private final JsonSchemaValidatorService jsonSchemaValidatorService;
     private final Optional<AzureBlobService> azureBlobService;
 
-    public SjpPublishTask(CourtListStatusRepository repository,
+    public SjpPublishTask(CourtListStatusUpdater statusUpdater,
                            SjpToCathPayloadTransformer transformer,
                            CourtListPublisher courtListPublisher,
                            DocumentSanitizer documentSanitizer,
                            JsonSchemaValidatorService jsonSchemaValidatorService,
                            Optional<AzureBlobService> azureBlobService) {
-        this.repository = repository;
+        this.statusUpdater = statusUpdater;
         this.transformer = transformer;
         this.courtListPublisher = courtListPublisher;
         this.documentSanitizer = documentSanitizer;
@@ -103,7 +100,7 @@ public class SjpPublishTask implements ExecutableTask {
         } catch (Exception e) {
             logger.error("Error publishing SJP court list for courtListId: {}", courtListId, e);
             if (courtListId != null) {
-                updateFailure(courtListId, e);
+                statusUpdater.markPublishFailed(courtListId, e);
             }
         }
 
@@ -149,9 +146,11 @@ public class SjpPublishTask implements ExecutableTask {
                 courtListId, listType, lang, status);
 
         if (status >= 200 && status < 300) {
-            updateSuccess(courtListId);
+            statusUpdater.markPublishSuccessful(courtListId);
         } else {
-            updateFailure(courtListId, new RuntimeException("CaTH returned status " + status));
+            RuntimeException cathFailure = new RuntimeException("CaTH returned status " + status);
+            logger.error("CaTH publish failed for courtListId: {}, listType: {}, status: {}", courtListId, listType, status, cathFailure);
+            statusUpdater.markPublishFailed(courtListId, cathFailure);
         }
     }
 
@@ -188,36 +187,6 @@ public class SjpPublishTask implements ExecutableTask {
                 .displayTo(displayTo)
                 .requestType(requestType)
                 .build();
-    }
-
-    private void updateSuccess(UUID courtListId) {
-        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
-        if (entity == null) {
-            logger.warn("No SJP publish status record found for courtListId: {}", courtListId);
-            return;
-        }
-        entity.setPublishStatus(Status.SUCCESSFUL);
-        entity.setPublishErrorMessage(null);
-        entity.setLastUpdated(Instant.now());
-        repository.save(entity);
-    }
-
-    private void updateFailure(UUID courtListId, Exception e) {
-        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
-        if (entity == null) {
-            logger.warn("No SJP publish status record found for courtListId: {}", courtListId);
-            return;
-        }
-        entity.setPublishStatus(Status.FAILED);
-        entity.setPublishErrorMessage(buildErrorMessage(e));
-        entity.setLastUpdated(Instant.now());
-        repository.save(entity);
-    }
-
-    private static String buildErrorMessage(Exception e) {
-        StringWriter sw = new StringWriter();
-        e.printStackTrace(new PrintWriter(sw));
-        return sw.toString();
     }
 
     private UUID extractCourtListId(JsonObject jobData) {

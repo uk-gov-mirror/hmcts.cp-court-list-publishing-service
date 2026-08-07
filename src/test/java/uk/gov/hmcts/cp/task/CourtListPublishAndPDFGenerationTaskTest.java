@@ -31,6 +31,7 @@ import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPdfHelper;
 import uk.gov.hmcts.cp.services.CourtListQueryService;
+import uk.gov.hmcts.cp.services.CourtListStatusUpdater;
 import uk.gov.hmcts.cp.models.CourtListPayload;
 import uk.gov.hmcts.cp.models.transformed.CourtListDocument;
 import uk.gov.hmcts.cp.taskmanager.domain.ExecutionInfo;
@@ -78,7 +79,7 @@ class CourtListPublishAndPDFGenerationTaskTest {
         );
         // Initialize task with mocked dependencies (CaTH publishing enabled for tests that verify CaTH call)
         task = new CourtListPublishAndPDFGenerationTask(
-                repository,
+                new CourtListStatusUpdater(repository),
                 courtListQueryService,
                 cathService,
                 pdfHelper,
@@ -333,7 +334,7 @@ class CourtListPublishAndPDFGenerationTaskTest {
     void execute_shouldNotSendToCaTH_whenCaTHPublishingDisabled() {
         // Given - task with CaTH publishing disabled
         CourtListPublishAndPDFGenerationTask taskWithCathDisabled = new CourtListPublishAndPDFGenerationTask(
-                repository,
+                new CourtListStatusUpdater(repository),
                 courtListQueryService,
                 cathService,
                 pdfHelper,

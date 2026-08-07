@@ -246,7 +246,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.FINAL, // Different list type, same court centre - avoids unique index collision
                 Instant.now()
         );
         CourtListStatusEntity entity3 = new CourtListStatusEntity(

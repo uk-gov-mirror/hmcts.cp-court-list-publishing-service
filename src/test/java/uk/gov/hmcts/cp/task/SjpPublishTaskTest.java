@@ -29,6 +29,7 @@ import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.AzureBlobService;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
+import uk.gov.hmcts.cp.services.CourtListStatusUpdater;
 import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
 import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
 import uk.gov.hmcts.cp.services.sanitization.HtmlStrippingSanitizer;
@@ -82,7 +83,7 @@ class SjpPublishTaskTest {
     void setUp() {
         courtListId = UUID.randomUUID();
         task = new SjpPublishTask(
-                repository,
+                new CourtListStatusUpdater(repository),
                 new SjpToCathPayloadTransformer(),
                 courtListPublisher,
                 SANITIZER,
@@ -253,7 +254,7 @@ class SjpPublishTaskTest {
     @Test
     void execute_skipsBlobUpload_whenBlobServiceNotAvailable() {
         SjpPublishTask taskWithoutBlob = new SjpPublishTask(
-                repository, new SjpToCathPayloadTransformer(), courtListPublisher, SANITIZER,
+                new CourtListStatusUpdater(repository), new SjpToCathPayloadTransformer(), courtListPublisher, SANITIZER,
                 jsonSchemaValidatorService, Optional.empty());
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
