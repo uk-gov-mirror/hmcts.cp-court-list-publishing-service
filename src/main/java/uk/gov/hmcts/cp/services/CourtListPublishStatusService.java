@@ -68,7 +68,7 @@ public class CourtListPublishStatusService {
 
         // Search for existing entity by courtCentreId, publishDate, and courtListType
         Optional<CourtListStatusEntity> existingEntityOpt = repository.findByCourtCentreIdAndPublishDateAndCourtListType(
-                courtCentreId, publishDate, courtListType);
+                courtCentreId, publishDate, courtListType.name());
 
         CourtListStatusEntity entity;
         if (existingEntityOpt.isPresent()) {
@@ -119,7 +119,7 @@ public class CourtListPublishStatusService {
         if (courtListType != null) {
             // Filter by courtListType if provided
             Optional<CourtListStatusEntity> entityOpt = repository.findByCourtCentreIdAndPublishDateAndCourtListType(
-                    courtCentreId, publishDate, courtListType);
+                    courtCentreId, publishDate, courtListType.name());
             entities = entityOpt.map(List::of).orElse(List.of());
         } else {
             // Get all for courtCentreId and publishDate
@@ -138,10 +138,11 @@ public class CourtListPublishStatusService {
     }
 
 
+    /** Excludes SJP rows (courtCentreId is always null for those) — this is the standard flow's listing. */
     @Transactional
     public List<CourtListPublishResponse> findAll() {
         LOG.atDebug().log("Fetching all court list publish statuses");
-        return repository.findAll().stream()
+        return repository.findByCourtCentreIdIsNotNull().stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -209,7 +210,7 @@ public class CourtListPublishStatusService {
                 courtCentreId,
                 Status.REQUESTED, // Initial publish status
                 Status.REQUESTED, // Default file status for new entities
-                courtListType,
+                courtListType.name(),
                 Instant.now()
         );
         entity.setPublishDate(publishDate);
@@ -230,13 +231,13 @@ public class CourtListPublishStatusService {
         // Convert String publishStatus to Status enum
         Status publishStatusEnum = entity.getPublishStatus();
         Status fileStatusEnum = entity.getFileStatus();
-        
+
         return new CourtListPublishResponse(
                 entity.getCourtListId(),
                 entity.getCourtCentreId(),
                 publishStatusEnum,
                 fileStatusEnum,
-                entity.getCourtListType(),
+                toCourtListTypeOrNull(entity),
                 lastUpdated,
                 entity.getFileUrl(),
                 entity.getFileId(),
@@ -244,6 +245,22 @@ public class CourtListPublishStatusService {
                 entity.getFileErrorMessage(),
                 entity.getPublishDate()
         );
+    }
+
+    /**
+     * Converts the stored string back to the {@code CourtListType} enum for the standard flow's
+     * response. Rows sharing this table for SJP hold values (e.g. SJP_PUBLIC_LIST) that aren't
+     * members of this enum — {@link #findAll()} already excludes them, but this stays defensive
+     * for direct-by-id lookups rather than throwing.
+     */
+    private static CourtListType toCourtListTypeOrNull(final CourtListStatusEntity entity) {
+        try {
+            return CourtListType.valueOf(entity.getCourtListType());
+        } catch (IllegalArgumentException e) {
+            LOG.atDebug().log("courtListType '{}' for courtListId {} is not a CourtListType value (likely an SJP row)",
+                    entity.getCourtListType(), entity.getCourtListId());
+            return null;
+        }
     }
 }
 

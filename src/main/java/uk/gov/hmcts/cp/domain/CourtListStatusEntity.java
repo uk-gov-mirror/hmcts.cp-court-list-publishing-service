@@ -1,8 +1,5 @@
 package uk.gov.hmcts.cp.domain;
 
-import static jakarta.persistence.EnumType.STRING;
-
-import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
 import java.time.Instant;
@@ -18,6 +15,16 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import static jakarta.persistence.EnumType.STRING;
+
+/**
+ * Shared by the standard/online-public court list flow and the SJP flow. {@code courtCentreId}
+ * and {@code fileStatus}/{@code fileErrorMessage}/{@code fileUrl}/{@code fileId} are null for SJP
+ * rows: SJP has no court-centre concept (it's a national list) and no PDF generation step.
+ * {@code courtListType} is a plain string (not the {@code CourtListType} enum) so it can hold
+ * either that enum's values (standard flow) or SJP's own list types (e.g. SJP_PUBLIC_LIST).
+ * {@code payloadHash} supports SJP's content-hash dedup and is unused by the standard flow.
+ */
 @Getter
 @Entity
 @Table(name = "court_list_publish_status")
@@ -28,7 +35,7 @@ public class CourtListStatusEntity {
     private UUID courtListId;
 
     @Setter
-    @Column(name = "court_centre_id", nullable = false)
+    @Column(name = "court_centre_id")
     private UUID courtCentreId;
 
     @Enumerated(STRING)
@@ -38,13 +45,12 @@ public class CourtListStatusEntity {
 
     @Enumerated(STRING)
     @Setter
-    @Column(name = "file_status", nullable = false)
+    @Column(name = "file_status")
     private Status fileStatus;
 
-    @Enumerated(STRING)
     @Setter
     @Column(name = "court_list_type", nullable = false)
-    private CourtListType courtListType;
+    private String courtListType;
 
     @Setter
     @Column(name = "last_updated", nullable = false)
@@ -74,6 +80,10 @@ public class CourtListStatusEntity {
     @Column(name = "publish_count", nullable = false)
     private int publishCount;
 
+    @Setter
+    @Column(name = "payload_hash")
+    private String payloadHash;
+
     protected CourtListStatusEntity() {
     }
 
@@ -82,15 +92,14 @@ public class CourtListStatusEntity {
             final UUID courtCentreId,
             final Status publishStatus,
             final Status fileStatus,
-            final CourtListType courtListType,
+            final String courtListType,
             final Instant lastUpdated) {
         this.courtListId = Objects.requireNonNull(courtListId);
-        this.courtCentreId = Objects.requireNonNull(courtCentreId);
+        this.courtCentreId = courtCentreId;
         this.publishStatus = publishStatus;
-        this.fileStatus = Objects.requireNonNull(fileStatus);
+        this.fileStatus = fileStatus;
         this.courtListType = Objects.requireNonNull(courtListType);
         this.lastUpdated = Objects.requireNonNull(lastUpdated);
     }
 
 }
-

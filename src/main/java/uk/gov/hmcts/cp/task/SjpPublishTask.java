@@ -5,12 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
+import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.domain.sjp.SjpPublishStatusEntity;
 import uk.gov.hmcts.cp.openapi.model.Status;
-import uk.gov.hmcts.cp.repositories.SjpPublishStatusRepository;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.AzureBlobService;
+import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
 import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
 import uk.gov.hmcts.cp.services.PublicationSchema;
@@ -39,10 +40,16 @@ import static uk.gov.hmcts.cp.taskmanager.domain.ExecutionStatus.COMPLETED;
  * Async worker for SJP court list publishing, queued by
  * {@link uk.gov.hmcts.cp.services.sjp.SjpTaskTriggerService}. Mirrors
  * {@link CourtListPublishAndPDFGenerationTask}'s CaTH-send step: transforms and sanitizes the
- * payload, uploads it to Azure blob storage (unique-per-{@code sjpListId} blob name) before
- * publishing, then sends to CaTH. Skips the blob upload and CaTH send when the transformed
- * payload is unchanged since the last successful publish for the same dedup key, to avoid
- * uploading/publishing duplicate content on repeat/retry events.
+ * payload, uploads it to Azure blob storage (using the same blob-name convention as the
+ * standard flow, {@link CaTHService#buildBlobName}, so the existing cleanup job already covers
+ * SJP blobs) before publishing, then sends to CaTH. Skips the blob upload and CaTH send when
+ * the transformed payload is unchanged since the last successful publish for the same dedup
+ * key, to avoid uploading/publishing duplicate content on repeat/retry events.
+ *
+ * <p>Tracked in {@code court_list_publish_status} (shared with the standard flow) via
+ * {@link CourtListStatusRepository} — {@code courtCentreId} is always null for these rows
+ * (SJP has no court-centre concept) and {@code fileStatus}/file-related columns are unused
+ * (no PDF generation for SJP).
  */
 @Task("SJP_PUBLISH_TASK")
 @Component
@@ -58,18 +65,17 @@ public class SjpPublishTask implements ExecutableTask {
     private static final String DOCUMENT_NAME_PRESS = "SJP Press list";
     private static final String PROVENANCE = "COMMON_PLATFORM";
     private static final String TYPE_LIST = "LIST";
-    private static final String BLOB_SUFFIX = "-sjp-cath.json";
 
     private static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
-    private final SjpPublishStatusRepository repository;
+    private final CourtListStatusRepository repository;
     private final SjpToCathPayloadTransformer transformer;
     private final CourtListPublisher courtListPublisher;
     private final DocumentSanitizer documentSanitizer;
     private final JsonSchemaValidatorService jsonSchemaValidatorService;
     private final Optional<AzureBlobService> azureBlobService;
 
-    public SjpPublishTask(SjpPublishStatusRepository repository,
+    public SjpPublishTask(CourtListStatusRepository repository,
                            SjpToCathPayloadTransformer transformer,
                            CourtListPublisher courtListPublisher,
                            DocumentSanitizer documentSanitizer,
@@ -88,25 +94,25 @@ public class SjpPublishTask implements ExecutableTask {
         logger.info("Executing SJP_PUBLISH_TASK [job {}]", executionInfo);
 
         JsonObject jobData = executionInfo.getJobData();
-        UUID sjpListId = jobData != null ? extractSjpListId(jobData) : null;
+        UUID courtListId = jobData != null ? extractCourtListId(jobData) : null;
 
         try {
             if (jobData == null) {
                 logger.warn("SJP_PUBLISH_TASK executed with no job data");
             } else {
-                publish(sjpListId, jobData);
+                publish(courtListId, jobData);
             }
         } catch (Exception e) {
-            logger.error("Error publishing SJP court list for sjpListId: {}", sjpListId, e);
-            if (sjpListId != null) {
-                updateFailure(sjpListId, e);
+            logger.error("Error publishing SJP court list for courtListId: {}", courtListId, e);
+            if (courtListId != null) {
+                updateFailure(courtListId, e);
             }
         }
 
         return executionInfo().from(executionInfo).withExecutionStatus(COMPLETED).build();
     }
 
-    private void publish(UUID sjpListId, JsonObject jobData) throws Exception {
+    private void publish(UUID courtListId, JsonObject jobData) throws Exception {
         String listType = jobData.getString(JobDataConstant.SJP_LIST_TYPE, null);
         String payloadJson = jobData.getString(JobDataConstant.SJP_PAYLOAD, null);
         String language = jobData.containsKey(JobDataConstant.SJP_LANGUAGE)
@@ -114,8 +120,8 @@ public class SjpPublishTask implements ExecutableTask {
         String requestType = jobData.containsKey(JobDataConstant.SJP_REQUEST_TYPE)
                 ? jobData.getString(JobDataConstant.SJP_REQUEST_TYPE) : null;
 
-        if (sjpListId == null || listType == null || payloadJson == null) {
-            logger.warn("Missing required job data for SJP publish task, sjpListId={}, listType={}", sjpListId, listType);
+        if (courtListId == null || listType == null || payloadJson == null) {
+            logger.warn("Missing required job data for SJP publish task, courtListId={}, listType={}", courtListId, listType);
             return;
         }
 
@@ -136,10 +142,10 @@ public class SjpPublishTask implements ExecutableTask {
         // content already reached CaTH successfully, regardless of publishStatus — which the
         // synchronous accept path (SjpCourtListPublishService) always resets to REQUESTED before
         // queuing this job, so publishStatus can't be used as the dedup signal.
-        SjpPublishStatusEntity entity = repository.getBySjpListId(sjpListId);
+        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
         if (entity != null && contentHash.equals(entity.getPayloadHash())) {
-            logger.info("SJP payload unchanged since last successful publish for sjpListId: {}, "
-                    + "skipping duplicate blob upload and CaTH publish", sjpListId);
+            logger.info("SJP payload unchanged since last successful publish for courtListId: {}, "
+                    + "skipping duplicate blob upload and CaTH publish", courtListId);
             markUnchanged(entity);
             return;
         }
@@ -147,35 +153,31 @@ public class SjpPublishTask implements ExecutableTask {
         PublicationSchema schema = isPressList ? PublicationSchema.SJP_PRESS : PublicationSchema.SJP_PUBLIC;
         jsonSchemaValidatorService.validate(transformedPayload, schema);
 
-        uploadPayloadToBlob(transformedPayload, sjpListId);
+        uploadPayloadToBlob(transformedPayload, courtListId);
 
         DtsMeta meta = buildDtsMeta(cathListType, sensitivity, lang, requestType, payload.getCourtIdNumeric());
         int status = courtListPublisher.publish(transformedPayload, meta);
-        logger.info("SJP court list published to CaTH, sjpListId={}, listType={}, language={}, status={}",
-                sjpListId, listType, lang, status);
+        logger.info("SJP court list published to CaTH, courtListId={}, listType={}, language={}, status={}",
+                courtListId, listType, lang, status);
 
         if (status >= 200 && status < 300) {
-            updateSuccess(sjpListId, contentHash);
+            updateSuccess(courtListId, contentHash);
         } else {
-            updateFailure(sjpListId, new RuntimeException("CaTH returned status " + status));
+            updateFailure(courtListId, new RuntimeException("CaTH returned status " + status));
         }
     }
 
-    private void uploadPayloadToBlob(String payload, UUID sjpListId) {
+    private void uploadPayloadToBlob(String payload, UUID courtListId) {
         azureBlobService.ifPresentOrElse(
                 blobService -> {
                     try {
-                        blobService.uploadJson(payload, buildBlobName(sjpListId));
+                        blobService.uploadJson(payload, CaTHService.buildBlobName(courtListId));
                     } catch (Exception e) {
                         logger.error("Error uploading SJP payload to blob storage, continuing with publish", e);
                     }
                 },
                 () -> logger.debug("Azure Blob Service not available, skipping SJP payload upload")
         );
-    }
-
-    public static String buildBlobName(UUID sjpListId) {
-        return sjpListId + BLOB_SUFFIX;
     }
 
     private static DtsMeta buildDtsMeta(String listType, String sensitivity, String language,
@@ -210,10 +212,10 @@ public class SjpPublishTask implements ExecutableTask {
         }
     }
 
-    private void updateSuccess(UUID sjpListId, String contentHash) {
-        SjpPublishStatusEntity entity = repository.getBySjpListId(sjpListId);
+    private void updateSuccess(UUID courtListId, String contentHash) {
+        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
         if (entity == null) {
-            logger.warn("No SJP publish status record found for sjpListId: {}", sjpListId);
+            logger.warn("No SJP publish status record found for courtListId: {}", courtListId);
             return;
         }
         entity.setPublishStatus(Status.SUCCESSFUL);
@@ -223,10 +225,10 @@ public class SjpPublishTask implements ExecutableTask {
         repository.save(entity);
     }
 
-    private void updateFailure(UUID sjpListId, Exception e) {
-        SjpPublishStatusEntity entity = repository.getBySjpListId(sjpListId);
+    private void updateFailure(UUID courtListId, Exception e) {
+        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
         if (entity == null) {
-            logger.warn("No SJP publish status record found for sjpListId: {}", sjpListId);
+            logger.warn("No SJP publish status record found for courtListId: {}", courtListId);
             return;
         }
         entity.setPublishStatus(Status.FAILED);
@@ -236,7 +238,7 @@ public class SjpPublishTask implements ExecutableTask {
     }
 
     /** Confirms the already-published content is still current: status SUCCESSFUL, no re-upload/re-publish needed. */
-    private void markUnchanged(SjpPublishStatusEntity entity) {
+    private void markUnchanged(CourtListStatusEntity entity) {
         entity.setPublishStatus(Status.SUCCESSFUL);
         entity.setPublishErrorMessage(null);
         entity.setLastUpdated(Instant.now());
@@ -249,15 +251,15 @@ public class SjpPublishTask implements ExecutableTask {
         return sw.toString();
     }
 
-    private UUID extractSjpListId(JsonObject jobData) {
+    private UUID extractCourtListId(JsonObject jobData) {
         try {
             String value = jobData.getString(JobDataConstant.SJP_LIST_ID, null);
             return value != null ? UUID.fromString(value) : null;
         } catch (IllegalArgumentException e) {
-            logger.warn("Invalid UUID format for sjpListId: {}", jobData.getString(JobDataConstant.SJP_LIST_ID, null), e);
+            logger.warn("Invalid UUID format for courtListId: {}", jobData.getString(JobDataConstant.SJP_LIST_ID, null), e);
             return null;
         } catch (Exception e) {
-            logger.warn("Could not extract sjpListId from JsonObject", e);
+            logger.warn("Could not extract courtListId from JsonObject", e);
             return null;
         }
     }

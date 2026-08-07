@@ -45,10 +45,23 @@ class CleanupJobServiceTest {
                 UUID.randomUUID(),
                 Status.SUCCESSFUL,
                 Status.SUCCESSFUL,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now().minus(java.time.Duration.ofDays(RETENTION_DAYS + 10)));
         entity.setPublishDate(LocalDate.now().minusDays(RETENTION_DAYS + 10));
         entity.setFileId(fileId);
+        return entity;
+    }
+
+    /** Real SJP row shape: no court centre, no file/PDF, sharing court_list_publish_status with the standard flow. */
+    private CourtListStatusEntity buildSjpEntity(UUID courtListId) {
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId,
+                null,
+                Status.SUCCESSFUL,
+                null,
+                "SJP_PUBLIC_LIST",
+                Instant.now().minus(java.time.Duration.ofDays(RETENTION_DAYS + 10)));
+        entity.setPublishDate(LocalDate.now().minusDays(RETENTION_DAYS + 10));
         return entity;
     }
 
@@ -166,6 +179,22 @@ class CleanupJobServiceTest {
         // Neither blob exists; deleteIfExists returns false for both, no exceptions
         mockBlob(CourtListPublisherBlobClientService.buildPdfBlobName(fileId), false);
         mockBlob(CaTHService.buildBlobName(courtListId), false);
+
+        cleanupJobService.cleanupOldData(RETENTION_DAYS);
+
+        verify(repository, times(1)).delete(entity);
+    }
+
+    @Test
+    void cleanupOldData_shouldDeleteSjpRecordAndJsonBlob_afterRetentionPeriod() {
+        // SJP rows have no courtCentreId/fileId (no court-centre concept, no PDF), so cleanup
+        // must skip the PDF blob entirely and delete only the CaTH JSON blob before deleting the row.
+        cleanupJobService = new CleanupJobService(repository, blobContainerClient);
+        UUID courtListId = UUID.randomUUID();
+        CourtListStatusEntity entity = buildSjpEntity(courtListId);
+        when(repository.findByPublishDateBefore(any())).thenReturn(List.of(entity));
+
+        mockBlob(CaTHService.buildBlobName(courtListId), true);
 
         cleanupJobService.cleanupOldData(RETENTION_DAYS);
 

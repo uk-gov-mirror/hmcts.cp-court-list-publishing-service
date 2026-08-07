@@ -20,12 +20,13 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
+import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.DtsMeta;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.domain.sjp.SjpPublishStatusEntity;
 import uk.gov.hmcts.cp.openapi.model.Status;
-import uk.gov.hmcts.cp.repositories.SjpPublishStatusRepository;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.AzureBlobService;
+import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPublisher;
 import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
 import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
@@ -47,7 +48,7 @@ import java.util.UUID;
 class SjpPublishTaskTest {
 
     @Mock
-    private SjpPublishStatusRepository repository;
+    private CourtListStatusRepository repository;
 
     @Mock
     private CourtListPublisher courtListPublisher;
@@ -74,11 +75,11 @@ class SjpPublishTaskTest {
             new HtmlStrippingSanitizer(),
             new RequiredStringFieldsRegistry());
 
-    private UUID sjpListId;
+    private UUID courtListId;
 
     @BeforeEach
     void setUp() {
-        sjpListId = UUID.randomUUID();
+        courtListId = UUID.randomUUID();
         task = new SjpPublishTask(
                 repository,
                 new SjpToCathPayloadTransformer(),
@@ -120,7 +121,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, "325");
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -132,7 +133,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, "   ");
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -144,7 +145,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, null, true);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -156,7 +157,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, null, true);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, "ENGLISH", null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, "ENGLISH", null));
 
         task.execute(executionInfo);
 
@@ -168,7 +169,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, "FULL"));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, "FULL"));
 
         task.execute(executionInfo);
 
@@ -180,7 +181,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PRESS_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PRESS_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -189,21 +190,20 @@ class SjpPublishTaskTest {
         assertThat(meta.getSensitivity()).isEqualTo("CLASSIFIED");
     }
 
-    // ── blob upload (unique-uuid, before publish) ───────────────────────────
+    // ── blob upload (unique-uuid, before publish, shared naming with standard flow) ──
 
     @Test
-    void execute_uploadsPayloadToBlobBeforePublishing_withBlobNameFromSjpListId() {
+    void execute_uploadsPayloadToBlobBeforePublishing_withBlobNameFromCaTHService() {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
         InOrder inOrder = inOrder(azureBlobService, courtListPublisher);
-        inOrder.verify(azureBlobService).uploadJson(anyString(), org.mockito.ArgumentMatchers.eq(sjpListId + "-sjp-cath.json"));
+        inOrder.verify(azureBlobService).uploadJson(anyString(), org.mockito.ArgumentMatchers.eq(CaTHService.buildBlobName(courtListId)));
         inOrder.verify(courtListPublisher).publish(anyString(), any(DtsMeta.class));
-        assertThat(SjpPublishTask.buildBlobName(sjpListId)).isEqualTo(sjpListId + "-sjp-cath.json");
     }
 
     @Test
@@ -212,7 +212,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -227,7 +227,7 @@ class SjpPublishTaskTest {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         taskWithoutBlob.execute(executionInfo);
 
@@ -245,13 +245,14 @@ class SjpPublishTaskTest {
 
         // SjpCourtListPublishService always resets publishStatus to REQUESTED synchronously
         // before queuing this job, so the dedup check must key off payloadHash alone, not status.
-        SjpPublishStatusEntity entity = new SjpPublishStatusEntity(
-                sjpListId, "0", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.REQUESTED, Instant.now());
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.REQUESTED, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        entity.setPublishDate(LocalDate.of(2025, 3, 9));
         entity.setPayloadHash(hash);
-        when(repository.getBySjpListId(sjpListId)).thenReturn(entity);
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -265,15 +266,16 @@ class SjpPublishTaskTest {
 
     @Test
     void execute_republishes_whenContentChangedSinceLastPublish() {
-        SjpPublishStatusEntity entity = new SjpPublishStatusEntity(
-                sjpListId, "0", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.SUCCESSFUL, Instant.now());
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.SUCCESSFUL, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        entity.setPublishDate(LocalDate.of(2025, 3, 9));
         entity.setPayloadHash("stale-hash-from-previous-content");
-        when(repository.getBySjpListId(sjpListId)).thenReturn(entity);
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -287,14 +289,15 @@ class SjpPublishTaskTest {
     void execute_stillRetries_whenNoPriorSuccessfulHashRecorded_evenIfPreviousAttemptFailed() {
         // payloadHash is only ever written by updateSuccess, so a FAILED entity with no
         // recorded hash (never succeeded yet) must always retry, regardless of content.
-        SjpPublishStatusEntity entity = new SjpPublishStatusEntity(
-                sjpListId, "0", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.FAILED, Instant.now());
-        when(repository.getBySjpListId(sjpListId)).thenReturn(entity);
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.FAILED, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        entity.setPublishDate(LocalDate.of(2025, 3, 9));
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -307,13 +310,14 @@ class SjpPublishTaskTest {
     @Test
     void execute_marksFailed_whenCathReturnsNonSuccessStatus() {
         when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(500);
-        SjpPublishStatusEntity entity = new SjpPublishStatusEntity(
-                sjpListId, "0", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.REQUESTED, Instant.now());
-        when(repository.getBySjpListId(sjpListId)).thenReturn(entity);
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.REQUESTED, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        entity.setPublishDate(LocalDate.of(2025, 3, 9));
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         task.execute(executionInfo);
 
@@ -324,13 +328,14 @@ class SjpPublishTaskTest {
     @Test
     void execute_marksFailed_whenPublisherThrows() {
         doThrow(new RuntimeException("publish failed")).when(courtListPublisher).publish(anyString(), any(DtsMeta.class));
-        SjpPublishStatusEntity entity = new SjpPublishStatusEntity(
-                sjpListId, "0", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.REQUESTED, Instant.now());
-        when(repository.getBySjpListId(sjpListId)).thenReturn(entity);
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.REQUESTED, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        entity.setPublishDate(LocalDate.of(2025, 3, 9));
+        when(repository.getByCourtListId(courtListId)).thenReturn(entity);
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE);
         when(executionInfo.getJobData()).thenReturn(
-                jobData(sjpListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
+                jobData(courtListId, SjpCourtListPublishService.SJP_PUBLIC_LIST, payload, null, null));
 
         ExecutionInfo result = task.execute(executionInfo);
 
@@ -349,13 +354,13 @@ class SjpPublishTaskTest {
 
         assertThat(result.getExecutionStatus()).isEqualTo(COMPLETED);
         verify(courtListPublisher, never()).publish(anyString(), any(DtsMeta.class));
-        verify(repository, never()).getBySjpListId(any());
+        verify(repository, never()).getByCourtListId(any());
     }
 
     @Test
     void execute_returnsCompleted_whenPayloadMissingFromJobData() {
         JsonObject jobData = Json.createObjectBuilder()
-                .add(JobDataConstant.SJP_LIST_ID, sjpListId.toString())
+                .add(JobDataConstant.SJP_LIST_ID, courtListId.toString())
                 .add(JobDataConstant.SJP_LIST_TYPE, SjpCourtListPublishService.SJP_PUBLIC_LIST)
                 .build();
         when(executionInfo.getJobData()).thenReturn(jobData);

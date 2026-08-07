@@ -93,7 +93,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 lastUpdated
         );
         entity.setPublishDate(LocalDate.now());
@@ -108,7 +108,7 @@ class CourtListStatusRepositoryTest {
         assertThat(savedEntity.getCourtListId()).isEqualTo(courtListId);
         assertThat(savedEntity.getCourtCentreId()).isEqualTo(courtCentreId);
         assertThat(savedEntity.getPublishStatus()).isEqualTo(publishStatus);
-        assertThat(savedEntity.getCourtListType()).isEqualTo(courtListType);
+        assertThat(savedEntity.getCourtListType()).isEqualTo(courtListType.name());
         assertThat(savedEntity.getLastUpdated()).isEqualTo(lastUpdated);
     }
 
@@ -129,7 +129,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 lastUpdated
         );
         entity.setFileUrl(fileName);
@@ -137,7 +137,7 @@ class CourtListStatusRepositoryTest {
         entity.setPublishDate(publishDate);
 
         // When
-        CourtListStatusEntity savedEntity = repository.save(entity);
+        repository.save(entity);
         entityManager.flush();
         entityManager.clear();
 
@@ -162,7 +162,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 lastUpdated
         );
         entity.setPublishDate(LocalDate.now());
@@ -177,7 +177,7 @@ class CourtListStatusRepositoryTest {
         assertThat(foundEntity.get().getCourtListId()).isEqualTo(courtListId);
         assertThat(foundEntity.get().getCourtCentreId()).isEqualTo(courtCentreId);
         assertThat(foundEntity.get().getPublishStatus()).isEqualTo(publishStatus);
-        assertThat(foundEntity.get().getCourtListType()).isEqualTo(courtListType);
+        assertThat(foundEntity.get().getCourtListType()).isEqualTo(courtListType.name());
     }
 
     @Test
@@ -206,7 +206,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 lastUpdated
         );
         entity.setPublishDate(LocalDate.now());
@@ -221,7 +221,7 @@ class CourtListStatusRepositoryTest {
         assertThat(foundEntity.getCourtListId()).isEqualTo(courtListId);
         assertThat(foundEntity.getCourtCentreId()).isEqualTo(courtCentreId);
         assertThat(foundEntity.getPublishStatus()).isEqualTo(publishStatus);
-        assertThat(foundEntity.getCourtListType()).isEqualTo(courtListType);
+        assertThat(foundEntity.getCourtListType()).isEqualTo(courtListType.name());
     }
 
     @Test
@@ -238,7 +238,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity2 = new CourtListStatusEntity(
@@ -246,7 +246,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity3 = new CourtListStatusEntity(
@@ -254,7 +254,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(), // Different court centre
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now()
         );
         entity1.setPublishDate(LocalDate.now());
@@ -291,7 +291,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 publishStatus,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity2 = new CourtListStatusEntity(
@@ -299,7 +299,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 publishStatus,
                 Status.REQUESTED,
-                CourtListType.FINAL,
+                CourtListType.FINAL.name(),
                 Instant.now()
         );
         entity1.setPublishDate(LocalDate.now());
@@ -335,7 +335,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                CourtListType.FINAL,
+                CourtListType.FINAL.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity2 = new CourtListStatusEntity(
@@ -343,7 +343,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                CourtListType.FIRM,
+                CourtListType.FIRM.name(),
                 Instant.now()
         );
         entity1.setPublishDate(LocalDate.now());
@@ -382,7 +382,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 originalStatus,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC,
+                CourtListType.ONLINE_PUBLIC.name(),
                 lastUpdated
         );
         entity.setPublishDate(LocalDate.now());
@@ -394,7 +394,7 @@ class CourtListStatusRepositoryTest {
         existingEntity.setPublishStatus(newStatus);
         existingEntity.setFileUrl("updated-file.pdf");
         existingEntity.setPublishErrorMessage(null);
-        CourtListStatusEntity updatedEntity = repository.save(existingEntity);
+        repository.save(existingEntity);
         entityManager.flush();
         entityManager.clear();
 
@@ -414,7 +414,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC,
+                CourtListType.ONLINE_PUBLIC.name(),
                 Instant.now()
         );
         entity.setPublishDate(LocalDate.now());
@@ -439,7 +439,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.STANDARD.name(),
                 Instant.now()
         );
         entity.setPublishDate(LocalDate.now());
@@ -468,7 +468,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 publishStatus,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 lastUpdated
         );
         entity.setPublishDate(LocalDate.now());
@@ -498,7 +498,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.FINAL,
+                CourtListType.FINAL.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity2 = new CourtListStatusEntity(
@@ -506,7 +506,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC,
+                CourtListType.ONLINE_PUBLIC.name(),
                 Instant.now()
         );
         CourtListStatusEntity entity3 = new CourtListStatusEntity(
@@ -514,7 +514,7 @@ class CourtListStatusRepositoryTest {
                 UUID.randomUUID(),
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC,
+                CourtListType.ONLINE_PUBLIC.name(),
                 Instant.now()
         );
         entity1.setPublishDate(LocalDate.now());

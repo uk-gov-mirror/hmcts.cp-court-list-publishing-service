@@ -1,6 +1,5 @@
 package uk.gov.hmcts.cp.services.sjp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,9 +9,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import uk.gov.hmcts.cp.cleanup.CleanupJobService;
-import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.controllers.CourtListPublishController;
-import uk.gov.hmcts.cp.repositories.SjpPublishStatusRepository;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
 import uk.gov.hmcts.cp.services.ReferenceDataService;
@@ -27,7 +25,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration test for the SJP → CaTH publish flow when CATH_PUBLISHING_ENABLED=false.
- *
  * Wires the real SjpCourtListPublishService with cathPublishingEnabled=false so the
  * feature flag is exercised through the full HTTP stack (controller → service → guard).
  * SjpTaskTriggerService is mocked to confirm the async publish job is never queued
@@ -40,7 +37,7 @@ class SjpCathPublishingDisabledIntegrationTest {
             MediaType.parseMediaType("application/vnd.courtlistpublishing-service.sjp.post+json");
     private static final String SJP_PUBLISH_URL = "/api/court-list-publish/sjp/publishCourtList";
 
-    @Mock private SjpPublishStatusRepository sjpPublishStatusRepository;
+    @Mock private CourtListStatusRepository courtListStatusRepository;
     @Mock private SjpTaskTriggerService sjpTaskTriggerService;
     @Mock private CourtListPublishStatusService service;
     @Mock private CourtListTaskTriggerService courtListTaskTriggerService;
@@ -49,12 +46,11 @@ class SjpCathPublishingDisabledIntegrationTest {
     @Mock private ReferenceDataService referenceDataService;
 
     private MockMvc mockMvc;
-    private final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
 
     @BeforeEach
     void setUp() {
         SjpCourtListPublishService sjpService = new SjpCourtListPublishService(
-                sjpPublishStatusRepository,
+                courtListStatusRepository,
                 sjpTaskTriggerService,
                 false  // CATH_PUBLISHING_ENABLED=false
         );

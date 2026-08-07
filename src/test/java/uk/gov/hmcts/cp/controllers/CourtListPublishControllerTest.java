@@ -3,7 +3,6 @@ package uk.gov.hmcts.cp.controllers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uk.gov.hmcts.cp.config.CourtListPublishingSystemUserConfig;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,7 +18,6 @@ import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
-import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService.SjpPublishResult;
 
@@ -38,7 +36,6 @@ import uk.gov.hmcts.cp.openapi.model.SjpListType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -61,8 +58,6 @@ class CourtListPublishControllerTest {
     @Mock
     private CourtListTaskTriggerService courtListTaskTriggerService;
 
-    @Mock
-    private CourtListDownloadService courtListDownloadService;
 
     @Mock
     private SjpCourtListPublishService sjpCourtListPublishService;
@@ -74,7 +69,6 @@ class CourtListPublishControllerTest {
     private ObjectMapper objectMapper;
 
     private static final String PUBLISH_URL = "/api/court-list-publish/publish";
-    private static final String BASE_URL = "/api/court-list-publish";
     private static final String SJP_PUBLISH_URL = "/api/court-list-publish/sjp/publishCourtList";
 
     @BeforeEach
@@ -357,7 +351,7 @@ class CourtListPublishControllerTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                courtListType,
+                courtListType.name(),
                 Instant.now()
         );
     }
@@ -376,7 +370,7 @@ class CourtListPublishControllerTest {
                 entity.getCourtCentreId(),
                 publishStatusEnum,
                 fileStatusEnum,
-                entity.getCourtListType(),
+                CourtListType.valueOf(entity.getCourtListType()),
                 lastUpdated,
                 entity.getFileUrl(),
                 entity.getFileId(),

@@ -7,10 +7,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
+import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.domain.sjp.SjpPublishStatusEntity;
 import uk.gov.hmcts.cp.openapi.model.Status;
-import uk.gov.hmcts.cp.repositories.SjpPublishStatusRepository;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -32,11 +32,13 @@ import java.util.UUID;
  * scope and remains in Staging PubHub.
  *
  * <p>Validation happens synchronously; the actual transform, blob-storage upload, and CaTH
- * send are queued as an async job ({@link SjpPublishTask} via {@link SjpTaskTriggerService}),
+ * send are queued as an async job  SjpPublishTask via {@link SjpTaskTriggerService}),
  * matching the standard/online-public court list flow ({@code CourtListTaskTriggerService} /
- * {@code CourtListPublishAndPDFGenerationTask}). The dedup key (courtIdNumeric, listType,
- * publishDate) reuses the same {@code sjpListId} for repeat requests, mirroring
- * {@code CourtListPublishStatusService#createOrUpdate}.
+ * {@code CourtListPublishAndPDFGenerationTask}). Tracking reuses
+ * {@code court_list_publish_status} (the same table as the standard flow): SJP has no
+ * court-centre concept, so the dedup key is (courtListType, publishDate) only, with
+ * {@code courtCentreId} always null — mirroring
+ * {@code CourtListPublishStatusService#createOrUpdate}'s lookup-and-reuse pattern.
  */
 @Service
 public class SjpCourtListPublishService {
@@ -47,13 +49,13 @@ public class SjpCourtListPublishService {
     public static final String SJP_PUBLIC_LIST = "SJP_PUBLIC_LIST";
     public static final String SJP_PRESS_LIST = "SJP_PRESS_LIST";
 
-    private final SjpPublishStatusRepository repository;
+    private final CourtListStatusRepository repository;
     private final SjpTaskTriggerService sjpTaskTriggerService;
     private final boolean cathPublishingEnabled;
     private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
     public SjpCourtListPublishService(
-            SjpPublishStatusRepository repository,
+            CourtListStatusRepository repository,
             SjpTaskTriggerService sjpTaskTriggerService,
             @Value("${cath.publishing-enabled:false}") boolean cathPublishingEnabled) {
         this.repository = repository;
@@ -66,7 +68,7 @@ public class SjpCourtListPublishService {
      *
      * <p>Only request-level validation (payload shape, non-empty readyCases) happens here;
      * the transform, blob upload, schema validation, and CaTH send all happen later in
-     * {@link SjpPublishTask} once the job is picked up.
+     * {SjpPublishTask} once the job is picked up.
      *
      * @param listType    SJP_PUBLIC_LIST or SJP_PRESS_LIST
      * @param language    optional override (default: derived from listPayload.isWelsh)
@@ -105,14 +107,14 @@ public class SjpCourtListPublishService {
         try {
             String courtIdNumeric = normalizeCourtId(payload.getCourtIdNumeric());
             LocalDate publishDate = deriveDate(payload.getGeneratedDateAndTime());
-            UUID sjpListId = findOrCreateSjpListId(courtIdNumeric, listType, publishDate);
+            UUID courtListId = findOrCreateCourtListId(listType, publishDate);
 
             String payloadJson = OBJECT_MAPPER.writeValueAsString(payload);
             sjpTaskTriggerService.triggerSjpPublishTask(
-                    sjpListId, courtIdNumeric, listType, publishDate, language, requestType, payloadJson);
+                    courtListId, courtIdNumeric, listType, publishDate, language, requestType, payloadJson);
 
-            LOG.info("SJP court list publish request queued, sjpListId={}, listType={}",
-                    sjpListId, Encode.forJava(listType));
+            LOG.info("SJP court list publish request queued, courtListId={}, listType={}",
+                    courtListId, Encode.forJava(listType));
             return SjpPublishResult.accepted(listType, "SJP court list publish request accepted for processing");
         } catch (Exception e) {
             LOG.error("Failed to queue SJP court list for publishing: {}", Encode.forJava(e.getMessage()), e);
@@ -121,24 +123,27 @@ public class SjpCourtListPublishService {
     }
 
     /**
-     * Looks up an existing record by (courtIdNumeric, listType, publishDate) and reuses its
-     * {@code sjpListId} — same dedup-by-lookup pattern as
-     * {@code CourtListPublishStatusService#createOrUpdate} — otherwise creates a new one.
+     * Looks up an existing record by (listType, publishDate) — courtCentreId is always null for
+     * SJP rows, since SJP is a national list with no court-centre concept — and reuses its
+     * {@code courtListId}, otherwise creates a new one. Same lookup-and-reuse pattern as
+     * {@code CourtListPublishStatusService#createOrUpdate}.
      */
-    private UUID findOrCreateSjpListId(String courtIdNumeric, String listType, LocalDate publishDate) {
-        Optional<SjpPublishStatusEntity> existing = repository.findByCourtIdNumericAndListTypeAndPublishDate(
-                courtIdNumeric, listType, publishDate);
+    private UUID findOrCreateCourtListId(String listType, LocalDate publishDate) {
+        Optional<CourtListStatusEntity> existing = repository.findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
+                publishDate, listType);
         if (existing.isPresent()) {
-            SjpPublishStatusEntity entity = existing.get();
+            CourtListStatusEntity entity = existing.get();
             entity.setPublishStatus(Status.REQUESTED);
             entity.setLastUpdated(Instant.now());
             repository.save(entity);
-            return entity.getSjpListId();
+            return entity.getCourtListId();
         }
-        UUID sjpListId = UUID.randomUUID();
-        repository.save(new SjpPublishStatusEntity(
-                sjpListId, courtIdNumeric, listType, publishDate, Status.REQUESTED, Instant.now()));
-        return sjpListId;
+        UUID courtListId = UUID.randomUUID();
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.REQUESTED, null, listType, Instant.now());
+        entity.setPublishDate(publishDate);
+        repository.save(entity);
+        return courtListId;
     }
 
     /**

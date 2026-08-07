@@ -1,7 +1,6 @@
 package uk.gov.hmcts.cp.repositories;
 
 import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
-import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
 import java.time.LocalDate;
@@ -26,13 +25,19 @@ public interface CourtListStatusRepository extends JpaRepository<CourtListStatus
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishStatus(UUID courtCentreId, Status publishStatus);
 
     Optional<CourtListStatusEntity> findByCourtCentreIdAndPublishDateAndCourtListType(
-            UUID courtCentreId, LocalDate publishDate, CourtListType courtListType);
+            UUID courtCentreId, LocalDate publishDate, String courtListType);
 
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishDate(
             UUID courtCentreId, LocalDate publishDate);
+
+    /** SJP dedup lookup: SJP has no court-centre concept, so courtCentreId is always null for these rows. */
+    Optional<CourtListStatusEntity> findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
+            LocalDate publishDate, String courtListType);
+
+    /** Rows belonging to the standard/online-public flow only (excludes SJP rows, which have no courtCentreId). */
+    List<CourtListStatusEntity> findByCourtCentreIdIsNotNull();
 
     @Query("SELECT e FROM CourtListStatusEntity e WHERE e.publishDate < :cutoff")
     List<CourtListStatusEntity> findByPublishDateBefore(@Param("cutoff") LocalDate cutoff);
 
 }
-

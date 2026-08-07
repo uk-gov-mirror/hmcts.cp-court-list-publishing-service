@@ -6,10 +6,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.domain.sjp.SjpPublishStatusEntity;
 import uk.gov.hmcts.cp.openapi.model.Status;
-import uk.gov.hmcts.cp.repositories.SjpPublishStatusRepository;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,7 +31,7 @@ import static org.mockito.Mockito.when;
 class SjpCourtListPublishServiceTest {
 
     @Mock
-    private SjpPublishStatusRepository repository;
+    private CourtListStatusRepository repository;
 
     @Mock
     private SjpTaskTriggerService sjpTaskTriggerService;
@@ -48,7 +48,7 @@ class SjpCourtListPublishServiceTest {
     @BeforeEach
     void setUp() {
         service = new SjpCourtListPublishService(repository, sjpTaskTriggerService, true);
-        lenient().when(repository.findByCourtIdNumericAndListTypeAndPublishDate(anyString(), anyString(), any(LocalDate.class)))
+        lenient().when(repository.findByCourtCentreIdIsNullAndPublishDateAndCourtListType(any(LocalDate.class), anyString()))
                 .thenReturn(Optional.empty());
     }
 
@@ -129,13 +129,14 @@ class SjpCourtListPublishServiceTest {
     }
 
     @Test
-    void publishSjpCourtList_reusesExistingSjpListId_whenDedupKeyMatches() {
+    void publishSjpCourtList_reusesExistingCourtListId_whenDedupKeyMatches() {
         UUID existingId = UUID.randomUUID();
-        SjpPublishStatusEntity existing = new SjpPublishStatusEntity(
-                existingId, "325", SjpCourtListPublishService.SJP_PUBLIC_LIST,
-                LocalDate.of(2025, 3, 9), Status.SUCCESSFUL, Instant.now());
-        when(repository.findByCourtIdNumericAndListTypeAndPublishDate(
-                "325", SjpCourtListPublishService.SJP_PUBLIC_LIST, LocalDate.of(2025, 3, 9)))
+        CourtListStatusEntity existing = new CourtListStatusEntity(
+                existingId, null, Status.SUCCESSFUL, null,
+                SjpCourtListPublishService.SJP_PUBLIC_LIST, Instant.now());
+        existing.setPublishDate(LocalDate.of(2025, 3, 9));
+        when(repository.findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
+                LocalDate.of(2025, 3, 9), SjpCourtListPublishService.SJP_PUBLIC_LIST))
                 .thenReturn(Optional.of(existing));
 
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, "325");
@@ -148,19 +149,20 @@ class SjpCourtListPublishServiceTest {
     }
 
     @Test
-    void publishSjpCourtList_createsNewSjpListId_whenNoDedupMatch() {
+    void publishSjpCourtList_createsNewCourtListId_whenNoDedupMatch() {
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", ONE_CASE, "325");
         service.publishSjpCourtList(SjpCourtListPublishService.SJP_PUBLIC_LIST, null, null, payload);
 
-        ArgumentCaptor<SjpPublishStatusEntity> entityCaptor = ArgumentCaptor.forClass(SjpPublishStatusEntity.class);
+        ArgumentCaptor<CourtListStatusEntity> entityCaptor = ArgumentCaptor.forClass(CourtListStatusEntity.class);
         verify(repository).save(entityCaptor.capture());
-        SjpPublishStatusEntity saved = entityCaptor.getValue();
+        CourtListStatusEntity saved = entityCaptor.getValue();
 
         verify(sjpTaskTriggerService).triggerSjpPublishTask(
-                eq(saved.getSjpListId()), eq("325"), anyString(), any(LocalDate.class), any(), any(), anyString());
+                eq(saved.getCourtListId()), eq("325"), anyString(), any(LocalDate.class), any(), any(), anyString());
         assertThat(saved.getPublishStatus()).isEqualTo(Status.REQUESTED);
-        assertThat(saved.getCourtIdNumeric()).isEqualTo("325");
-        assertThat(saved.getListType()).isEqualTo(SjpCourtListPublishService.SJP_PUBLIC_LIST);
+        assertThat(saved.getCourtCentreId()).isNull();
+        assertThat(saved.getFileStatus()).isNull();
+        assertThat(saved.getCourtListType()).isEqualTo(SjpCourtListPublishService.SJP_PUBLIC_LIST);
         assertThat(saved.getPublishDate()).isEqualTo(LocalDate.of(2025, 3, 9));
     }
 
@@ -169,8 +171,8 @@ class SjpCourtListPublishServiceTest {
         SjpListPayload payload = new SjpListPayload("2025-03-09", ONE_CASE);
         service.publishSjpCourtList(SjpCourtListPublishService.SJP_PUBLIC_LIST, null, null, payload);
 
-        verify(repository).findByCourtIdNumericAndListTypeAndPublishDate(
-                anyString(), anyString(), eq(LocalDate.of(2025, 3, 9)));
+        verify(repository).findByCourtCentreIdIsNullAndPublishDateAndCourtListType(
+                eq(LocalDate.of(2025, 3, 9)), anyString());
     }
 
     @Test

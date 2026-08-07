@@ -33,7 +33,6 @@ import uk.gov.hmcts.cp.services.CourtListPdfHelper;
 import uk.gov.hmcts.cp.services.CourtListQueryService;
 import uk.gov.hmcts.cp.models.CourtListPayload;
 import uk.gov.hmcts.cp.models.transformed.CourtListDocument;
-import uk.gov.hmcts.cp.task.JobDataConstant;
 import uk.gov.hmcts.cp.taskmanager.domain.ExecutionInfo;
 
 import java.time.Instant;
@@ -74,7 +73,7 @@ class CourtListPublishAndPDFGenerationTaskTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.ONLINE_PUBLIC,
+                CourtListType.ONLINE_PUBLIC.name(),
                 Instant.now()
         );
         // Initialize task with mocked dependencies (CaTH publishing enabled for tests that verify CaTH call)
@@ -706,7 +705,6 @@ class CourtListPublishAndPDFGenerationTaskTest {
     void execute_shouldIncrementPublishCount_whenFileStatusBecomesSuccessful() {
         // Given
         entity.setPublishCount(2);
-        String publishDate = LocalDate.now().toString();
         JsonObject jobData = createJobDataWithCourtListId(courtListId);
         when(executionInfo.getJobData()).thenReturn(jobData);
         when(repository.getByCourtListId(courtListId)).thenReturn(entity);
