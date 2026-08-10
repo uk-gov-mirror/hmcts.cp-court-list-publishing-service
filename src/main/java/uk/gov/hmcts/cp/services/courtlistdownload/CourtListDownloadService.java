@@ -65,7 +65,9 @@ public class CourtListDownloadService {
             CourtListType.FINAL,         new TemplateInfo("CrownDailyList",             "CrownDailyListWelsh"),
             CourtListType.ONLINE_PUBLIC, new TemplateInfo("CrownOnlinePublicCourtList", "CrownOnlinePublicCourtListWelsh"),
             CourtListType.ALPHABETICAL,  new TemplateInfo("CourtList",           "CourtListEnglishWelsh"),
-            CourtListType.FIRM,          new TemplateInfo("CrownFirmList",              "CrownFirmListWelsh")
+            CourtListType.FIRM,          new TemplateInfo("CrownFirmList",              "CrownFirmListWelsh"),
+            CourtListType.JUDGE,         new TemplateInfo("JudgeList",                  "JudgeList"),
+            CourtListType.USHERS_CROWN,  new TemplateInfo("UshersCrownList",            "UshersCrownList")
     );
 
     private static final Set<CourtListType> CROWN_COURT_SUPPORTED_TYPES = CROWN_COURT_TEMPLATES.keySet();
