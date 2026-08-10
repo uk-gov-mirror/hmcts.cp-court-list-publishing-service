@@ -582,6 +582,16 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.ALPHABETICAL, CROWN_COURT_CENTRE_ID_WELSH, true);
     }
 
+    @Test
+    void getDownloadCourtListReturnsPdfWhenJudgeAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.JUDGE, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsPdfWhenUshersCrownAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.USHERS_CROWN, CROWN_COURT_CENTRE_ID, false);
+    }
+
     private String buildCrownCourtDownloadUrl(CourtListType courtListType, String courtCentreId) {
         return DOWNLOAD_ENDPOINT
                 + "?courtCentreId=" + courtCentreId
@@ -669,6 +679,8 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtListWelsh";
                 case ALPHABETICAL: return "CourtListEnglishWelsh";
                 case FIRM:        return "CrownFirmListWelsh";
+                case JUDGE:       return "JudgeList";
+                case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown Welsh template for " + type);
             }
         } else {
@@ -678,6 +690,8 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtList";
                 case ALPHABETICAL: return "CourtList";
                 case FIRM:        return "CrownFirmList";
+                case JUDGE:       return "JudgeList";
+                case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown template for " + type);
             }
         }

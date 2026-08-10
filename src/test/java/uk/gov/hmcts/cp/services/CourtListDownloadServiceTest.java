@@ -364,6 +364,54 @@ class CourtListDownloadServiceTest {
     }
 
     @Test
+    void generateCrownCourtPdfUsesJudgeListTemplate() throws IOException {
+        stubCrownPayload(CourtListType.JUDGE, null, "{}");
+        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("JudgeList")))
+                .thenReturn(PDF_BYTES);
+
+        service.generateCrownCourtPdf(
+                CourtListType.JUDGE, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
+
+        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("JudgeList"));
+    }
+
+    @Test
+    void generateCrownCourtPdfUsesJudgeListTemplateWhenWelsh() throws IOException {
+        stubCrownPayload(CourtListType.JUDGE, null, "{}");
+        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("JudgeList")))
+                .thenReturn(PDF_BYTES);
+
+        service.generateCrownCourtPdf(
+                CourtListType.JUDGE, true, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
+
+        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("JudgeList"));
+    }
+
+    @Test
+    void generateCrownCourtPdfUsesUshersCrownListTemplate() throws IOException {
+        stubCrownPayload(CourtListType.USHERS_CROWN, null, "{}");
+        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
+                .thenReturn(PDF_BYTES);
+
+        service.generateCrownCourtPdf(
+                CourtListType.USHERS_CROWN, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
+
+        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("UshersCrownList"));
+    }
+
+    @Test
+    void generateCrownCourtPdfUsesUshersCrownListTemplateWhenWelsh() throws IOException {
+        stubCrownPayload(CourtListType.USHERS_CROWN, null, "{}");
+        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
+                .thenReturn(PDF_BYTES);
+
+        service.generateCrownCourtPdf(
+                CourtListType.USHERS_CROWN, true, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
+
+        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("UshersCrownList"));
+    }
+
+    @Test
     void generateCrownCourtPdfForwardsCourtRoomId() throws IOException {
         String courtRoomId = "4294a92c-8827-3296-be53-c74b7e9e31d8";
         when(courtListDataService.getCrownCourtDailyListPayload(
