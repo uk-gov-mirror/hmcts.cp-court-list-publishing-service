@@ -626,8 +626,16 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 .as("PDF body for %s must match the WireMock-stubbed minimal-pdf.pdf bytes", courtListType)
                 .isEqualTo(loadResourceBytes("wiremock/__files/minimal-pdf.pdf"));
 
-        verifyCrownDailyListPayloadCalled(courtListType);
-        verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+        if (courtListType == CourtListType.JUDGE) {
+            verifyListingCourtListBinaryCalled(courtListType);
+            verifyDocumentGeneratorNotCalled();
+        } else if (courtListType == CourtListType.USHERS_CROWN) {
+            verifyProgressionCourtlistDataCalled(courtListType);
+            verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+        } else {
+            verifyCrownDailyListPayloadCalled(courtListType);
+            verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+        }
     }
 
     private void verifyCrownDailyListPayloadCalled(CourtListType courtListType) throws Exception {
@@ -679,7 +687,6 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtListWelsh";
                 case ALPHABETICAL: return "CourtListEnglishWelsh";
                 case FIRM:        return "CrownFirmListWelsh";
-                case JUDGE:       return "JudgeList";
                 case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown Welsh template for " + type);
             }
@@ -690,7 +697,6 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtList";
                 case ALPHABETICAL: return "CourtList";
                 case FIRM:        return "CrownFirmList";
-                case JUDGE:       return "JudgeList";
                 case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown template for " + type);
             }

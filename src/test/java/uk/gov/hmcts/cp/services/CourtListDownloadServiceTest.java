@@ -17,8 +17,11 @@ import java.time.LocalDate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -364,32 +367,38 @@ class CourtListDownloadServiceTest {
     }
 
     @Test
-    void generateCrownCourtPdfUsesJudgeListTemplate() throws IOException {
-        stubCrownPayload(CourtListType.JUDGE, null, "{}");
-        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("JudgeList")))
+    void generateCrownCourtPdfDelegatesJudgeToListingPdf() {
+        when(courtListDataService.fetchCourtListPdfFromListing(
+                eq(CourtListType.JUDGE), eq(COURT_CENTRE_ID), isNull(),
+                eq(START_DATE), eq(END_DATE), eq(CJSCPPUID), eq(false)))
                 .thenReturn(PDF_BYTES);
 
-        service.generateCrownCourtPdf(
+        CourtListFileResult result = service.generateCrownCourtPdf(
                 CourtListType.JUDGE, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
 
-        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("JudgeList"));
+        assertThat(result.content()).isEqualTo(PDF_BYTES);
+        assertThat(result.contentType()).isEqualTo(PDF_CONTENT_TYPE);
+        assertThat(result.filename()).isEqualTo("CourtList.pdf");
+        verifyNoInteractions(documentGeneratorClient);
     }
 
     @Test
-    void generateCrownCourtPdfUsesJudgeListTemplateWhenWelsh() throws IOException {
-        stubCrownPayload(CourtListType.JUDGE, null, "{}");
-        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("JudgeList")))
+    void generateCrownCourtPdfDelegatesJudgeToListingPdfWhenWelsh() {
+        when(courtListDataService.fetchCourtListPdfFromListing(
+                eq(CourtListType.JUDGE), eq(COURT_CENTRE_ID), isNull(),
+                eq(START_DATE), eq(END_DATE), eq(CJSCPPUID), eq(false)))
                 .thenReturn(PDF_BYTES);
 
-        service.generateCrownCourtPdf(
+        CourtListFileResult result = service.generateCrownCourtPdf(
                 CourtListType.JUDGE, true, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
 
-        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("JudgeList"));
+        assertThat(result.content()).isEqualTo(PDF_BYTES);
+        verifyNoInteractions(documentGeneratorClient);
     }
 
     @Test
     void generateCrownCourtPdfUsesUshersCrownListTemplate() throws IOException {
-        stubCrownPayload(CourtListType.USHERS_CROWN, null, "{}");
+        stubListingPayload(CourtListType.USHERS_CROWN, null, "{}");
         when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
                 .thenReturn(PDF_BYTES);
 
@@ -397,11 +406,13 @@ class CourtListDownloadServiceTest {
                 CourtListType.USHERS_CROWN, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
 
         verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("UshersCrownList"));
+        verify(courtListDataService, never()).getCrownCourtDailyListPayload(
+                any(), anyString(), any(), any(), any(), anyString(), anyBoolean());
     }
 
     @Test
     void generateCrownCourtPdfUsesUshersCrownListTemplateWhenWelsh() throws IOException {
-        stubCrownPayload(CourtListType.USHERS_CROWN, null, "{}");
+        stubListingPayload(CourtListType.USHERS_CROWN, null, "{}");
         when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
                 .thenReturn(PDF_BYTES);
 

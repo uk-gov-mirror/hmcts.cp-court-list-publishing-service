@@ -66,11 +66,18 @@ public class CourtListDownloadService {
             CourtListType.ONLINE_PUBLIC, new TemplateInfo("CrownOnlinePublicCourtList", "CrownOnlinePublicCourtListWelsh"),
             CourtListType.ALPHABETICAL,  new TemplateInfo("CourtList",           "CourtListEnglishWelsh"),
             CourtListType.FIRM,          new TemplateInfo("CrownFirmList",              "CrownFirmListWelsh"),
-            CourtListType.JUDGE,         new TemplateInfo("JudgeList",                  "JudgeList"),
             CourtListType.USHERS_CROWN,  new TemplateInfo("UshersCrownList",            "UshersCrownList")
     );
 
-    private static final Set<CourtListType> CROWN_COURT_SUPPORTED_TYPES = CROWN_COURT_TEMPLATES.keySet();
+    private static final Set<CourtListType> CROWN_COURT_LISTING_TYPES = EnumSet.of(CourtListType.JUDGE);
+
+    private static final Set<CourtListType> CROWN_COURT_DOWNLOAD_PAYLOAD_TYPES = EnumSet.of(CourtListType.USHERS_CROWN);
+
+    private static final Set<CourtListType> CROWN_COURT_SUPPORTED_TYPES = EnumSet.copyOf(CROWN_COURT_TEMPLATES.keySet());
+
+    static {
+        CROWN_COURT_SUPPORTED_TYPES.addAll(CROWN_COURT_LISTING_TYPES);
+    }
 
     private final CourtListDataService courtListDataService;
     private final DocumentGeneratorClient documentGeneratorClient;
@@ -163,14 +170,25 @@ public class CourtListDownloadService {
                     "Unsupported court list type for crown court download: " + courtListType);
         }
 
+        if (CROWN_COURT_LISTING_TYPES.contains(courtListType)) {
+            final byte[] pdf = courtListDataService.fetchCourtListPdfFromListing(
+                    courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
+            LOG.info("Crown court PDF fetched from listing for type={}, courtCentreId={}, size={} bytes",
+                    courtListType, Encode.forJava(courtCentreId), pdf.length);
+            return new CourtListFileResult(pdf, CONTENT_TYPE_PDF, PDF_FILENAME);
+        }
+
         TemplateInfo templates = CROWN_COURT_TEMPLATES.get(courtListType);
         String templateName = isWelsh ? templates.welshTemplate() : templates.englishTemplate();
 
         LOG.info("Generating crown court PDF for type={}, isWelsh={}, template={}, courtCentreId={}, startDate={}, endDate={}",
                 courtListType, isWelsh, Encode.forJava(templateName), Encode.forJava(courtCentreId), startDate, endDate);
 
-        final String payloadJson = courtListDataService.getCrownCourtDailyListPayload(
-                courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
+        final String payloadJson = CROWN_COURT_DOWNLOAD_PAYLOAD_TYPES.contains(courtListType)
+                ? courtListDataService.getCourtListPayloadForDownload(
+                        courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted)
+                : courtListDataService.getCrownCourtDailyListPayload(
+                        courtListType, courtCentreId, courtRoomId, startDate, endDate, cjscppuid, restricted);
 
         final JsonObject payload;
         try (JsonReader reader = Json.createReader(new StringReader(payloadJson))) {
