@@ -198,17 +198,23 @@ public class CourtListDownloadService {
                     "Failed to parse crown court payload JSON: " + e.getMessage(), e);
         }
 
+        final boolean wantsWord = WORD_DOWNLOAD_TYPES.contains(courtListType);
+
         final byte[] content;
         try {
-            content = documentGeneratorClient.generatePdf(payload, templateName);
+            content = wantsWord
+                    ? documentGeneratorClient.generateWord(payload, templateName)
+                    : documentGeneratorClient.generatePdf(payload, templateName);
         } catch (IOException e) {
             throw new CourtListDownloadException(
                     "Failed to render crown court PDF: " + e.getMessage(), e);
         }
 
-        LOG.info("Crown court PDF generated for type={}, template={}, courtCentreId={}, size={} bytes",
-                courtListType, Encode.forJava(templateName), Encode.forJava(courtCentreId), content.length);
+        LOG.info("Crown court document generated for type={}, template={}, courtCentreId={}, format={}, size={} bytes",
+                courtListType, Encode.forJava(templateName), Encode.forJava(courtCentreId), wantsWord ? "docx" : "pdf", content.length);
 
-        return new CourtListFileResult(content, CONTENT_TYPE_PDF, PDF_FILENAME);
+        return wantsWord
+                ? new CourtListFileResult(content, CONTENT_TYPE_WORD, WORD_FILENAME)
+                : new CourtListFileResult(content, CONTENT_TYPE_PDF, PDF_FILENAME);
     }
 }

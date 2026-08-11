@@ -399,13 +399,17 @@ class CourtListDownloadServiceTest {
     @Test
     void generateCrownCourtPdfUsesUshersCrownListTemplate() throws IOException {
         stubListingPayload(CourtListType.USHERS_CROWN, null, "{}");
-        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
-                .thenReturn(PDF_BYTES);
+        when(documentGeneratorClient.generateWord(any(JsonObject.class), eq("UshersCrownList")))
+                .thenReturn(WORD_BYTES);
 
-        service.generateCrownCourtPdf(
+        CourtListFileResult result = service.generateCrownCourtPdf(
                 CourtListType.USHERS_CROWN, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
 
-        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("UshersCrownList"));
+        assertThat(result.content()).isEqualTo(WORD_BYTES);
+        assertThat(result.contentType()).isEqualTo(WORD_CONTENT_TYPE);
+        assertThat(result.filename()).isEqualTo("CourtList.docx");
+        verify(documentGeneratorClient).generateWord(any(JsonObject.class), eq("UshersCrownList"));
+        verify(documentGeneratorClient, never()).generatePdf(any(JsonObject.class), anyString());
         verify(courtListDataService, never()).getCrownCourtDailyListPayload(
                 any(), anyString(), any(), any(), any(), anyString(), anyBoolean());
     }
@@ -413,13 +417,13 @@ class CourtListDownloadServiceTest {
     @Test
     void generateCrownCourtPdfUsesUshersCrownListTemplateWhenWelsh() throws IOException {
         stubListingPayload(CourtListType.USHERS_CROWN, null, "{}");
-        when(documentGeneratorClient.generatePdf(any(JsonObject.class), eq("UshersCrownList")))
-                .thenReturn(PDF_BYTES);
+        when(documentGeneratorClient.generateWord(any(JsonObject.class), eq("UshersCrownList")))
+                .thenReturn(WORD_BYTES);
 
         service.generateCrownCourtPdf(
                 CourtListType.USHERS_CROWN, true, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false);
 
-        verify(documentGeneratorClient).generatePdf(any(JsonObject.class), eq("UshersCrownList"));
+        verify(documentGeneratorClient).generateWord(any(JsonObject.class), eq("UshersCrownList"));
     }
 
     @Test
@@ -470,6 +474,19 @@ class CourtListDownloadServiceTest {
                 CourtListType.FINAL, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false))
                 .isInstanceOf(CourtListDownloadException.class)
                 .hasMessageContaining("Failed to render crown court PDF");
+    }
+
+    @Test
+    void generateCrownCourtPdfThrowsWhenWordGenerationFailsForUshersCrown() throws IOException {
+        stubListingPayload(CourtListType.USHERS_CROWN, null, "{}");
+        when(documentGeneratorClient.generateWord(any(JsonObject.class), eq("UshersCrownList")))
+                .thenThrow(new IOException("docgen down"));
+
+        assertThatThrownBy(() -> service.generateCrownCourtPdf(
+                CourtListType.USHERS_CROWN, false, COURT_CENTRE_ID, null, START_DATE, END_DATE, CJSCPPUID, false))
+                .isInstanceOf(CourtListDownloadException.class)
+                .hasMessageContaining("Failed to render crown court PDF");
+        verify(documentGeneratorClient, never()).generatePdf(any(JsonObject.class), anyString());
     }
 
     private void stubListingPayload(CourtListType type, String courtRoomId, String payloadJson) {

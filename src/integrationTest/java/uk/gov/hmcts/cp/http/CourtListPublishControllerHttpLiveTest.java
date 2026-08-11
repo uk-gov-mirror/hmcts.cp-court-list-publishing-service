@@ -588,8 +588,8 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
     }
 
     @Test
-    void getDownloadCourtListReturnsPdfWhenUshersCrownAndCrownCourt() throws Exception {
-        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.USHERS_CROWN, CROWN_COURT_CENTRE_ID, false);
+    void getDownloadCourtListReturnsWordWhenUshersCrownAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtWordForType(CourtListType.USHERS_CROWN, CROWN_COURT_CENTRE_ID);
     }
 
     private String buildCrownCourtDownloadUrl(CourtListType courtListType, String courtCentreId) {
@@ -629,13 +629,41 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         if (courtListType == CourtListType.JUDGE) {
             verifyListingCourtListBinaryCalled(courtListType);
             verifyDocumentGeneratorNotCalled();
-        } else if (courtListType == CourtListType.USHERS_CROWN) {
-            verifyProgressionCourtlistDataCalled(courtListType);
-            verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
         } else {
             verifyCrownDailyListPayloadCalled(courtListType);
             verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
         }
+    }
+
+    private void getDownloadCourtListReturnsCrownCourtWordForType(CourtListType courtListType, String courtCentreId) throws Exception {
+        String expectedContent = loadResourceText(expectedDocxContentResource(courtListType));
+        DocumentGeneratorStub.stubDocumentCreate(expectedContent);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(CJSCPPUID_HEADER, INTEGRATION_TEST_USER_ID);
+        headers.setAccept(java.util.List.of(MediaType.parseMediaType(DOWNLOAD_ACCEPT)));
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<byte[]> response = http.exchange(
+                buildCrownCourtDownloadUrl(courtListType, courtCentreId),
+                HttpMethod.GET,
+                entity,
+                byte[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType()).isNotNull();
+        assertThat(response.getHeaders().getContentType().toString())
+                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .contains("attachment", "CourtList.docx");
+        byte[] body = response.getBody();
+        assertThat(body).as("DOCX body for %s must be non-null", courtListType).isNotNull();
+        assertThat(body)
+                .as("DOCX body for %s must match every byte (and therefore every field value) of the stubbed content fixture", courtListType)
+                .isEqualTo(expectedContent.getBytes(StandardCharsets.UTF_8));
+
+        verifyProgressionCourtlistDataCalled(courtListType);
+        verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, false), "docx");
     }
 
     private void verifyCrownDailyListPayloadCalled(CourtListType courtListType) throws Exception {

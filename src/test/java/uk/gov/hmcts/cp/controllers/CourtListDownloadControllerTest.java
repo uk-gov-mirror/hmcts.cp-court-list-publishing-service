@@ -367,6 +367,64 @@ class CourtListDownloadControllerTest {
                 .andExpect(content().bytes(PDF_BYTES));
     }
 
+        @Test
+    void downloadCourtListReturnsPdfWhenJudgeAndCrownCourt() throws Exception {
+        CourtCentreData crownCourtData = CourtCentreData.builder()
+                .oucodeL1Code("C")
+                .isWelsh(false)
+                .build();
+        when(referenceDataService.getCourtCenterDataByCourtCentreId(anyString(), anyString()))
+                .thenReturn(Optional.of(crownCourtData));
+        CourtListFileResult result = new CourtListFileResult(PDF_BYTES, "application/pdf", "CourtList.pdf");
+        when(courtListDownloadService.generateCrownCourtPdf(
+                eq(CourtListType.JUDGE), eq(false), eq(COURT_CENTRE_ID),
+                isNull(), any(LocalDate.class), any(LocalDate.class), eq(CJSCPPUID_VALUE), eq(false)))
+                .thenReturn(result);
+
+        mockMvc.perform(get(DOWNLOAD_URL)
+                        .header("Accept", DOWNLOAD_ACCEPT)
+                        .header(CJSCPPUID_HEADER, CJSCPPUID_VALUE)
+                        .param("courtCentreId", COURT_CENTRE_ID)
+                        .param("startDate", START_DATE)
+                        .param("endDate", END_DATE)
+                        .param("courtListType", "JUDGE"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/pdf"))
+                .andExpect(content().bytes(PDF_BYTES));
+
+        verify(courtListDownloadService, org.mockito.Mockito.never()).generateCourtListDownload(
+                any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void downloadCourtListReturnsPdfWhenUshersCrownAndCrownCourt() throws Exception {
+        CourtCentreData crownCourtData = CourtCentreData.builder()
+                .oucodeL1Code("C")
+                .isWelsh(false)
+                .build();
+        when(referenceDataService.getCourtCenterDataByCourtCentreId(anyString(), anyString()))
+                .thenReturn(Optional.of(crownCourtData));
+        CourtListFileResult result = new CourtListFileResult(PDF_BYTES, "application/pdf", "CourtList.pdf");
+        when(courtListDownloadService.generateCrownCourtPdf(
+                eq(CourtListType.USHERS_CROWN), eq(false), eq(COURT_CENTRE_ID),
+                isNull(), any(LocalDate.class), any(LocalDate.class), eq(CJSCPPUID_VALUE), eq(false)))
+                .thenReturn(result);
+
+        mockMvc.perform(get(DOWNLOAD_URL)
+                        .header("Accept", DOWNLOAD_ACCEPT)
+                        .header(CJSCPPUID_HEADER, CJSCPPUID_VALUE)
+                        .param("courtCentreId", COURT_CENTRE_ID)
+                        .param("startDate", START_DATE)
+                        .param("endDate", END_DATE)
+                        .param("courtListType", "USHERS_CROWN"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/pdf"))
+                .andExpect(content().bytes(PDF_BYTES));
+
+        verify(courtListDownloadService, org.mockito.Mockito.never()).generateCourtListDownload(
+                any(), any(), any(), any(), any(), any(), anyBoolean());
+    }
+
     @Test
     void downloadCourtListReturnsPdfWhenWelshCrownCourt() throws Exception {
         CourtCentreData crownCourtData = CourtCentreData.builder()
