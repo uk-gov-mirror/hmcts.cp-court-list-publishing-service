@@ -582,6 +582,16 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
         getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.ALPHABETICAL, CROWN_COURT_CENTRE_ID_WELSH, true);
     }
 
+    @Test
+    void getDownloadCourtListReturnsPdfWhenJudgeAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtPdfForType(CourtListType.JUDGE, CROWN_COURT_CENTRE_ID, false);
+    }
+
+    @Test
+    void getDownloadCourtListReturnsWordWhenUshersCrownAndCrownCourt() throws Exception {
+        getDownloadCourtListReturnsCrownCourtWordForType(CourtListType.USHERS_CROWN, CROWN_COURT_CENTRE_ID);
+    }
+
     private String buildCrownCourtDownloadUrl(CourtListType courtListType, String courtCentreId) {
         return DOWNLOAD_ENDPOINT
                 + "?courtCentreId=" + courtCentreId
@@ -616,8 +626,44 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 .as("PDF body for %s must match the WireMock-stubbed minimal-pdf.pdf bytes", courtListType)
                 .isEqualTo(loadResourceBytes("wiremock/__files/minimal-pdf.pdf"));
 
-        verifyCrownDailyListPayloadCalled(courtListType);
-        verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+        if (courtListType == CourtListType.JUDGE) {
+            verifyListingCourtListBinaryCalled(courtListType);
+            verifyDocumentGeneratorNotCalled();
+        } else {
+            verifyCrownDailyListPayloadCalled(courtListType);
+            verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, isWelsh), "pdf");
+        }
+    }
+
+    private void getDownloadCourtListReturnsCrownCourtWordForType(CourtListType courtListType, String courtCentreId) throws Exception {
+        String expectedContent = loadResourceText(expectedDocxContentResource(courtListType));
+        DocumentGeneratorStub.stubDocumentCreate(expectedContent);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(CJSCPPUID_HEADER, INTEGRATION_TEST_USER_ID);
+        headers.setAccept(java.util.List.of(MediaType.parseMediaType(DOWNLOAD_ACCEPT)));
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<byte[]> response = http.exchange(
+                buildCrownCourtDownloadUrl(courtListType, courtCentreId),
+                HttpMethod.GET,
+                entity,
+                byte[].class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getContentType()).isNotNull();
+        assertThat(response.getHeaders().getContentType().toString())
+                .isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .contains("attachment", "CourtList.docx");
+        byte[] body = response.getBody();
+        assertThat(body).as("DOCX body for %s must be non-null", courtListType).isNotNull();
+        assertThat(body)
+                .as("DOCX body for %s must match every byte (and therefore every field value) of the stubbed content fixture", courtListType)
+                .isEqualTo(expectedContent.getBytes(StandardCharsets.UTF_8));
+
+        verifyProgressionCourtlistDataCalled(courtListType);
+        verifyDocumentGeneratorCalled(expectedCrownTemplate(courtListType, false), "docx");
     }
 
     private void verifyCrownDailyListPayloadCalled(CourtListType courtListType) throws Exception {
@@ -669,6 +715,7 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtListWelsh";
                 case ALPHABETICAL: return "CourtListEnglishWelsh";
                 case FIRM:        return "CrownFirmListWelsh";
+                case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown Welsh template for " + type);
             }
         } else {
@@ -678,6 +725,7 @@ public class CourtListPublishControllerHttpLiveTest extends AbstractTest {
                 case ONLINE_PUBLIC: return "CrownOnlinePublicCourtList";
                 case ALPHABETICAL: return "CourtList";
                 case FIRM:        return "CrownFirmList";
+                case USHERS_CROWN: return "UshersCrownList";
                 default: throw new IllegalArgumentException("No crown template for " + type);
             }
         }
