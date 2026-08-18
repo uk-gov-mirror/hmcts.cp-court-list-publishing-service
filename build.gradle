@@ -93,7 +93,7 @@ dependencies {
     // implementation('org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0-M1') {
     //     exclude group: 'org.springdoc', module: 'springdoc-openapi-kotlin'
     // }
-    implementation 'io.swagger.core.v3:swagger-core:2.2.38'
+    implementation 'io.swagger.core.v3:swagger-core:2.2.54'
     implementation 'javax.xml.bind:jaxb-api:2.3.1'
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
