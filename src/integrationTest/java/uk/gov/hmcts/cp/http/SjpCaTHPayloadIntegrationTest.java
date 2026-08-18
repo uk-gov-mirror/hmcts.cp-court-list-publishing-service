@@ -222,6 +222,57 @@ public class SjpCaTHPayloadIntegrationTest extends AbstractTest {
         assertThat(header(cathReq, "x-court-id")).isEqualTo("100");
     }
 
+    /**
+     * Regression for a production schema-validation failure: press schema requires
+     * {@code reportingRestriction} on every offence, but source data doesn't always supply it.
+     * Before the fix, this request would come back {@code FAILED} ("Payload failed schema
+     * validation") instead of publishing to CaTH.
+     */
+    @Test
+    void publishPressList_defaultsReportingRestrictionToFalse_andPassesSchemaValidation_whenSourceOmitsIt() throws Exception {
+        String requestJson = """
+            {
+              "listType": "SJP_PRESS_LIST",
+              "requestType": "FULL",
+              "listPayload": {
+                "generatedDateAndTime": "2025-06-01T09:00:00",
+                "courtIdNumeric": "100",
+                "readyCases": [
+                  {
+                    "caseUrn": "URN-PRESS-NORR-001",
+                    "defendantName": "Alex Doe",
+                    "prosecutorName": "CPS",
+                    "sjpOffences": [
+                      {"title": "Littering", "wording": "Dropped litter in a public place"}
+                    ]
+                  }
+                ]
+              }
+            }
+            """;
+
+        int cathCountBefore = listSjpCaTHRequests().size();
+        ResponseEntity<String> response = postSjpRequest(requestJson);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode body = objectMapper.readTree(response.getBody());
+        assertThat(body.get("status").asText())
+                .as("request must be accepted and published, not FAILED on schema validation")
+                .isEqualTo("ACCEPTED");
+
+        JsonNode cathReq = waitForAdditionalCaTHRequest(cathCountBefore);
+        JsonNode cathPayload = parseCaTHBody(cathReq);
+
+        JsonNode offence0 = firstHearing(cathPayload).path("offence").path(0);
+        assertThat(offence0.path("offenceTitle").asText()).isEqualTo("Littering");
+        assertThat(offence0.has("reportingRestriction")).isTrue();
+        assertThat(offence0.path("reportingRestriction").asBoolean()).isFalse();
+
+        assertThatCode(() -> schemaValidator.validate(bodyAsString(cathReq), PublicationSchema.SJP_PRESS))
+                .as("CaTH payload must be valid against the SJP press schema even when source omits reportingRestriction")
+                .doesNotThrowAnyException();
+    }
+
     // ── Welsh language from isWelsh ──────────────────────────────────────────
 
     @Test

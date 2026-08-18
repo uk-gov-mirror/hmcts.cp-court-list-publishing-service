@@ -226,15 +226,16 @@ public class SjpToCathPayloadTransformer {
             if (!(item instanceof Map)) {
                 continue;
             }
-            Map<String, Object> o = (Map<String, Object>) item;
-            Boolean reportingRestriction = null;
-            if (isPressList && o.get(REPORTING_RESTRICTION) != null) {
-                reportingRestriction = Boolean.TRUE.equals(o.get(REPORTING_RESTRICTION));
-            }
+            Map<String, Object> objectMap = (Map<String, Object>) item;
+            // Press schema requires reportingRestriction on every offence, so default to false (not restricted) when the source data doesn't supply it — omitting it entirely
+            // (as a null would, via @JsonInclude(NON_NULL) on SjpCathOffence) fails schema validation. Public list schema doesn't require it, so leave it unset there.
+            Boolean reportingRestriction = isPressList
+                    ? Boolean.TRUE.equals(objectMap.get(REPORTING_RESTRICTION))
+                    : null;
 
             offences.add(SjpCathOffence.builder()
-                    .offenceTitle(getString(o, OFFENCE_TITLE).orElse(null))
-                    .offenceWording(getString(o, OFFENCE_WORDING).orElse(null))
+                    .offenceTitle(getString(objectMap, OFFENCE_TITLE).orElse(null))
+                    .offenceWording(getString(objectMap, OFFENCE_WORDING).orElse(null))
                     .reportingRestriction(reportingRestriction)
                     .build());
         }

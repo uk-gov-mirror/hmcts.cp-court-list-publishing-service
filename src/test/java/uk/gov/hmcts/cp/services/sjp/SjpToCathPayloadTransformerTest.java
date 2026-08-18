@@ -49,22 +49,22 @@ class SjpToCathPayloadTransformerTest {
         assertThat(master.getDocument().getVersion()).isEqualTo("1.0");
 
         assertThat(master.getCourtLists()).hasSize(1);
-        assertThat(master.getCourtLists().get(0).getCourtHouse()).isNotNull();
-        assertThat(master.getCourtLists().get(0).getCourtHouse().getCourtRoom()).hasSize(1);
+        assertThat(master.getCourtLists().getFirst().getCourtHouse()).isNotNull();
+        assertThat(master.getCourtLists().getFirst().getCourtHouse().getCourtRoom()).hasSize(1);
 
-        var courtRoom = master.getCourtLists().get(0).getCourtHouse().getCourtRoom().get(0);
+        var courtRoom = master.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst();
         assertThat(courtRoom.getSession()).hasSize(1);
-        assertThat(courtRoom.getSession().get(0).getSittings()).hasSize(1);
+        assertThat(courtRoom.getSession().getFirst().getSittings()).hasSize(1);
 
-        var sittings = courtRoom.getSession().get(0).getSittings().get(0);
+        var sittings = courtRoom.getSession().getFirst().getSittings().getFirst();
         assertThat(sittings.getHearing()).hasSize(1);
 
-        var hearing = sittings.getHearing().get(0);
+        var hearing = sittings.getHearing().getFirst();
         assertThat(hearing.getParty()).hasSize(2); // prosecutor + defendant
         assertThat(hearing.getOffence()).hasSize(1);
-        assertThat(hearing.getOffence().get(0).getOffenceTitle()).isEqualTo("Offence 1");
+        assertThat(hearing.getOffence().getFirst().getOffenceTitle()).isEqualTo("Offence 1");
         assertThat(hearing.getCases()).hasSize(1);
-        assertThat(hearing.getCases().get(0).getCaseUrn()).isEqualTo("case-1");
+        assertThat(hearing.getCases().getFirst().getCaseUrn()).isEqualTo("case-1");
     }
 
     @Test
@@ -84,6 +84,29 @@ class SjpToCathPayloadTransformerTest {
         assertThat(root.get("courtLists").isArray()).isTrue();
         assertThat(root.get("courtLists").get(0).has("courtHouse")).isTrue();
         assertThat(root.get("courtLists").get(0).get("courtHouse").has("courtRoom")).isTrue();
+    }
+
+    @Test
+    void transform_publicList_omitsReportingRestriction_whenSjpOffencesPresentWithoutIt() throws Exception {
+        // Public list schema doesn't require reportingRestriction; it must stay absent even
+        // when sjpOffences is present, regardless of whether the source data supplies the field.
+        SjpListPayload payload = new SjpListPayload(
+                "2025-03-09T10:00:00",
+                List.of(Map.<String, Object>of(
+                        "caseUrn", "urn-public-offence-1",
+                        "defendantName", "Name",
+                        "sjpOffences", List.of(Map.of("title", "Speeding", "wording", "Drove too fast"))
+                ))
+        );
+
+        String json = transformer.transform(payload, SjpDocumentType.SJP_PUBLIC_LIST.getValue());
+
+        JsonNode offence = objectMapper.readTree(json).get("courtLists").get(0)
+                .get("courtHouse").get("courtRoom").get(0)
+                .get("session").get(0).get("sittings").get(0)
+                .get("hearing").get(0).get("offence").get(0);
+        assertThat(offence.get("offenceTitle").asText()).isEqualTo("Speeding");
+        assertThat(offence.has("reportingRestriction")).isFalse();
     }
 
     @Test
@@ -113,15 +136,36 @@ class SjpToCathPayloadTransformerTest {
     }
 
     @Test
+    void transform_pressList_defaultsReportingRestrictionToFalse_whenSourceDataOmitsIt() throws Exception {
+        SjpListPayload payload = new SjpListPayload(
+                "2025-03-09T10:00:00",
+                List.of(Map.<String, Object>of(
+                        "caseUrn", "urn-3",
+                        "defendantName", "Name",
+                        "sjpOffences", List.of(Map.of("title", "Speeding", "wording", "Drove too fast"))
+                ))
+        );
+
+        String json = transformer.transform(payload, SjpDocumentType.SJP_PRESS_LIST.getValue());
+
+        JsonNode offence = objectMapper.readTree(json).get("courtLists").get(0)
+                .get("courtHouse").get("courtRoom").get(0)
+                .get("session").get(0).get("sittings").get(0)
+                .get("hearing").get(0).get("offence").get(0);
+        assertThat(offence.has("reportingRestriction")).isTrue();
+        assertThat(offence.get("reportingRestriction").asBoolean()).isFalse();
+    }
+
+    @Test
     void buildPubhubMaster_emptyReadyCases_buildsEmptyCourtRoom() {
         SjpListPayload payload = new SjpListPayload("2025-03-09T10:00:00", List.of());
 
         PubhubMaster master = transformer.buildPubhubMaster(payload, SjpDocumentType.SJP_PUBLIC_LIST.getValue());
 
         assertThat(master.getCourtLists()).hasSize(1);
-        assertThat(master.getCourtLists().get(0).getCourtHouse().getCourtRoom()).hasSize(1);
-        var sittings = master.getCourtLists().get(0).getCourtHouse().getCourtRoom().get(0)
-                .getSession().get(0).getSittings().get(0);
+        assertThat(master.getCourtLists().getFirst().getCourtHouse().getCourtRoom()).hasSize(1);
+        var sittings = master.getCourtLists().getFirst().getCourtHouse().getCourtRoom().getFirst()
+                .getSession().getFirst().getSittings().getFirst();
         assertThat(sittings.getHearing()).isEmpty();
     }
 }
