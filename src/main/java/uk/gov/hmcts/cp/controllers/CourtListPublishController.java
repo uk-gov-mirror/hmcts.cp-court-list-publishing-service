@@ -16,6 +16,8 @@ import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadException;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListFileResult;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
+import uk.gov.hmcts.cp.services.sjp.SjpStatusListTypeMapper;
+import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService.SjpPublishResult;
 
@@ -211,6 +213,8 @@ public class CourtListPublishController implements CourtListPublishApi {
                 request.getRequestType(),
                 request.getListPayload());
 
+        recordSjpPublishStatus(request, result);
+
         PublishCourtListResponse response = new PublishCourtListResponse(
                 result.getStatus(),
                 request.getListType(),
@@ -295,5 +299,41 @@ public class CourtListPublishController implements CourtListPublishApi {
         String oucodeL1Code = courtCentreData.getOucodeL1Code();
         return "C".equalsIgnoreCase(oucodeL1Code);
     }
-}
 
+    /**
+     * Records the outcome of an SJP publish against the fused CourtListType, so that each of the
+     * eight daily SJP publishes gets its own publish-status row. Language is resolved the same way
+     * SjpCourtListPublishService resolves it: explicit `language` wins, otherwise listPayload.isWelsh.
+     *
+     * <p>A failure to record status must not change the publish outcome reported to the caller -
+     * the list has already reached CaTH by this point.
+     */
+    private void recordSjpPublishStatus(final PublishCourtListRequest request, final SjpPublishResult result) {
+        try {
+            final String language = resolveSjpLanguage(request);
+            final CourtListType statusType =
+                    SjpStatusListTypeMapper.toCourtListType(request.getListType().getValue(), language);
+            final boolean failed = "FAILED".equals(result.getStatus());
+            service.recordSjpPublish(
+                    statusType,
+                    LocalDate.now(),
+                    failed ? Status.FAILED : Status.SUCCESSFUL,
+                    failed ? result.getMessage() : null);
+        } catch (Exception e) {
+            LOG.atError().log("Failed to record SJP publish status for listType {}",
+                    Encode.forJava(String.valueOf(request.getListType())), e);
+        }
+    }
+
+    private static String resolveSjpLanguage(final PublishCourtListRequest request) {
+        final String explicit = request.getLanguage();
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+        final Object payload = request.getListPayload();
+        if (payload instanceof uk.gov.hmcts.cp.openapi.model.SjpListPayload sjpPayload) {
+            return Boolean.TRUE.equals(sjpPayload.getIsWelsh()) ? "WELSH" : "ENGLISH";
+        }
+        return "ENGLISH";
+    }
+}

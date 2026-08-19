@@ -38,6 +38,61 @@ public class CourtListPublishStatusService {
 
     private final CourtListStatusRepository repository;
 
+    /**
+     * Records the outcome of one SJP publish.
+     *
+     * <p>The row key is (publishDate, courtListType). SJP is national so there is no court centre
+     * and {@code court_centre_id} is left NULL; the fused SJP_* court list types already encode
+     * audience, request type and language, which is what keeps the eight daily SJP publishes on
+     * separate rows. Uniqueness is backed by the partial index ux_court_list_publish_status_sjp.
+     *
+     * <p>{@code fileStatus} is left NULL: this service publishes JSON to CaTH and generates no
+     * file. CHECK constraints keep both columns mandatory for every non-SJP list type.
+     */
+    @Transactional
+    public CourtListPublishResponse recordSjpPublish(
+            final CourtListType courtListType,
+            final LocalDate publishDate,
+            final Status publishStatus,
+            final String errorMessage) {
+        validateSjpCourtListType(courtListType);
+        validatePublishStatus(publishStatus);
+
+        LOG.atDebug().log("Recording SJP publish status for type: {}, date: {}, status: {}",
+                courtListType, publishDate, publishStatus);
+
+        final Optional<CourtListStatusEntity> existing =
+                repository.findByPublishDateAndCourtListType(publishDate, courtListType);
+
+        final CourtListStatusEntity entity = existing.orElseGet(() -> {
+            CourtListStatusEntity created = new CourtListStatusEntity(
+                    UUID.randomUUID(),
+                    null,              // SJP is national - no court centre
+                    publishStatus,
+                    null,              // SJP produces no file
+                    courtListType,
+                    Instant.now());
+            created.setPublishDate(publishDate);
+            return created;
+        });
+
+        entity.setPublishStatus(publishStatus);
+        entity.setPublishErrorMessage(Status.FAILED.equals(publishStatus) ? errorMessage : null);
+        entity.setLastUpdated(Instant.now());
+        entity.setPublishCount(entity.getPublishCount() + 1);
+
+        return toResponse(repository.save(entity));
+    }
+
+    private void validateSjpCourtListType(final CourtListType courtListType) {
+        validateCourtListType(courtListType);
+        if (!courtListType.getValue().startsWith("SJP_")) {
+            throw new IllegalArgumentException(
+                    "recordSjpPublish requires an SJP court list type, got: " + courtListType);
+        }
+    }
+
+
     @Transactional
     public CourtListPublishResponse getByCourtListId(final UUID courtListId) {
         validateCourtListId(courtListId);

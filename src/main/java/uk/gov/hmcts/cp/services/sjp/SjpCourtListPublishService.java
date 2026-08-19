@@ -37,14 +37,22 @@ public class SjpCourtListPublishService {
     private static final String STATUS_FAILED = "FAILED";
     private static final String PROVENANCE = "COMMON_PLATFORM";
     private static final String TYPE_LIST = "LIST";
-    private static final String CATH_LIST_TYPE_PUBLIC = "SJP_PUBLIC_LIST";
-    private static final String CATH_LIST_TYPE_PRESS = "SJP_PRESS_LIST";
     private static final String SENSITIVITY_PUBLIC = "PUBLIC";
     private static final String SENSITIVITY_CLASSIFIED = "CLASSIFIED";
     private static final String DOCUMENT_NAME_PUBLIC = "SJP Public list";
     private static final String DOCUMENT_NAME_PRESS = "SJP Press list";
     public static final String SJP_PUBLIC_LIST = "SJP_PUBLIC_LIST";
     public static final String SJP_PRESS_LIST = "SJP_PRESS_LIST";
+    public static final String SJP_DELTA_PUBLIC_LIST = "SJP_DELTA_PUBLIC_LIST";
+    public static final String SJP_DELTA_PRESS_LIST = "SJP_DELTA_PRESS_LIST";
+
+    /** The CaTH list-type vocabulary. Anything outside this set is rejected, never defaulted. */
+    private static final java.util.Set<String> KNOWN_LIST_TYPES = java.util.Set.of(
+            SJP_PUBLIC_LIST, SJP_PRESS_LIST, SJP_DELTA_PUBLIC_LIST, SJP_DELTA_PRESS_LIST);
+
+    /** Press variants carry CLASSIFIED sensitivity and the press schema. */
+    private static final java.util.Set<String> PRESS_LIST_TYPES = java.util.Set.of(
+            SJP_PRESS_LIST, SJP_DELTA_PRESS_LIST);
 
     private final SjpToCathPayloadTransformer transformer;
     private final CourtListPublisher courtListPublisher;
@@ -91,6 +99,11 @@ public class SjpCourtListPublishService {
             return SjpPublishResult.accepted(listType, "CaTH publishing is disabled");
         }
 
+        if (!KNOWN_LIST_TYPES.contains(listType)) {
+            LOG.warn("Rejecting unknown SJP list type: {}", Encode.forJava(listType));
+            return SjpPublishResult.failed(listType, "Unknown SJP list type: " + listType);
+        }
+
         SjpListPayload payload;
         if (listPayload == null) {
             return SjpPublishResult.failed(listType, "listPayload is required to publish to CaTH");
@@ -107,9 +120,12 @@ public class SjpCourtListPublishService {
         }
 
         try {
-            boolean isPressList = SJP_PRESS_LIST.equals(listType);
+            boolean isPressList = PRESS_LIST_TYPES.contains(listType);
             String documentName = isPressList ? DOCUMENT_NAME_PRESS : DOCUMENT_NAME_PUBLIC;
-            String cathListType = isPressList ? CATH_LIST_TYPE_PRESS : CATH_LIST_TYPE_PUBLIC;
+            // Forwarded to CaTH verbatim: SjpListType mirrors CaTH's ListType one-to-one,
+            // so collapsing delta variants here would make CaTH render delta content
+            // with the full-list template.
+            String cathListType = listType;
             String sensitivity = isPressList ? SENSITIVITY_CLASSIFIED : SENSITIVITY_PUBLIC;
 
             // Derive language from isWelsh on the payload (mirrors CaTHService / non-SJP flow).

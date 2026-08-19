@@ -28,6 +28,15 @@ public interface CourtListStatusRepository extends JpaRepository<CourtListStatus
     Optional<CourtListStatusEntity> findByCourtCentreIdAndPublishDateAndCourtListType(
             UUID courtCentreId, LocalDate publishDate, CourtListType courtListType);
 
+    /**
+     * Locates an SJP publish-status row. SJP is national so court_centre_id is NULL, which a
+     * derived query cannot match with an equality predicate - and it adds nothing to the key
+     * anyway, because the SJP_* court list types are SJP-only and already fuse audience,
+     * request type and language.
+     */
+    Optional<CourtListStatusEntity> findByPublishDateAndCourtListType(
+            LocalDate publishDate, CourtListType courtListType);
+
     List<CourtListStatusEntity> findByCourtCentreIdAndPublishDate(
             UUID courtCentreId, LocalDate publishDate);
 

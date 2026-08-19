@@ -315,6 +315,74 @@ class CourtListPublishControllerTest {
     }
 
     @Test
+    void publishSjpCourtList_recordsSuccessfulPublishStatusAgainstFusedCourtListType() throws Exception {
+        when(sjpCourtListPublishService.publishSjpCourtList(any(), any(), any(), any()))
+                .thenReturn(SjpPublishResult.accepted("SJP_DELTA_PRESS_LIST", "published"));
+
+        PublishCourtListRequest request = new PublishCourtListRequest()
+                .listType(SjpListType.SJP_DELTA_PRESS_LIST)
+                .language("WELSH")
+                .listPayload(minimalSjpPayload());
+
+        mockMvc.perform(post(SJP_PUBLISH_URL)
+                        .contentType(SJP_MEDIA_TYPE)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(service).recordSjpPublish(
+                eq(uk.gov.hmcts.cp.openapi.model.CourtListType.SJP_PRESS_DELTA_WELSH),
+                any(),
+                eq(uk.gov.hmcts.cp.openapi.model.Status.SUCCESSFUL),
+                isNull());
+    }
+
+    @Test
+    void publishSjpCourtList_recordsFailedPublishStatusWithMessage() throws Exception {
+        when(sjpCourtListPublishService.publishSjpCourtList(any(), any(), any(), any()))
+                .thenReturn(SjpPublishResult.failed("SJP_PUBLIC_LIST", "CaTH returned status 500"));
+
+        PublishCourtListRequest request = new PublishCourtListRequest()
+                .listType(SjpListType.SJP_PUBLIC_LIST)
+                .language("ENGLISH")
+                .listPayload(minimalSjpPayload());
+
+        mockMvc.perform(post(SJP_PUBLISH_URL)
+                        .contentType(SJP_MEDIA_TYPE)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(service).recordSjpPublish(
+                eq(uk.gov.hmcts.cp.openapi.model.CourtListType.SJP_PUBLIC_FULL_ENGLISH),
+                any(),
+                eq(uk.gov.hmcts.cp.openapi.model.Status.FAILED),
+                eq("CaTH returned status 500"));
+    }
+
+    @Test
+    void publishSjpCourtList_derivesStatusLanguageFromIsWelsh_whenLanguageAbsent() throws Exception {
+        when(sjpCourtListPublishService.publishSjpCourtList(any(), any(), any(), any()))
+                .thenReturn(SjpPublishResult.accepted("SJP_PUBLIC_LIST", "published"));
+
+        SjpListPayload welshPayload = minimalSjpPayload();
+        welshPayload.setIsWelsh(true);
+
+        PublishCourtListRequest request = new PublishCourtListRequest()
+                .listType(SjpListType.SJP_PUBLIC_LIST)
+                .listPayload(welshPayload);
+
+        mockMvc.perform(post(SJP_PUBLISH_URL)
+                        .contentType(SJP_MEDIA_TYPE)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+
+        verify(service).recordSjpPublish(
+                eq(uk.gov.hmcts.cp.openapi.model.CourtListType.SJP_PUBLIC_FULL_WELSH),
+                any(),
+                any(),
+                any());
+    }
+
+    @Test
     void publishSjpCourtList_returnsBadRequest_whenListTypeMissing() throws Exception {
         mockMvc.perform(post(SJP_PUBLISH_URL)
                         .contentType(SJP_MEDIA_TYPE)

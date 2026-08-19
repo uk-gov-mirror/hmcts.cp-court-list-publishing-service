@@ -197,6 +197,69 @@ class SjpCourtListPublishServiceTest {
         assertThat(result.getMessage()).contains("no readyCases");
     }
 
+    // ── list type forwarded to CaTH ─────────────────────────
+
+    @Test
+    void publishSjpCourtList_forwardsPublicListTypeUnchanged() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+
+        service.publishSjpCourtList("SJP_PUBLIC_LIST", null, null,
+                new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(capturePublishedMeta().getListType()).isEqualTo("SJP_PUBLIC_LIST");
+    }
+
+    @Test
+    void publishSjpCourtList_forwardsDeltaPublicListTypeInsteadOfCollapsingItToFull() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+
+        service.publishSjpCourtList("SJP_DELTA_PUBLIC_LIST", null, null,
+                new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(capturePublishedMeta().getListType()).isEqualTo("SJP_DELTA_PUBLIC_LIST");
+    }
+
+    @Test
+    void publishSjpCourtList_forwardsDeltaPressListTypeInsteadOfCollapsingItToFull() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+
+        service.publishSjpCourtList("SJP_DELTA_PRESS_LIST", null, null,
+                new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(capturePublishedMeta().getListType()).isEqualTo("SJP_DELTA_PRESS_LIST");
+    }
+
+    @Test
+    void publishSjpCourtList_treatsDeltaPressAsPressForSensitivity() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+
+        service.publishSjpCourtList("SJP_DELTA_PRESS_LIST", null, null,
+                new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(capturePublishedMeta().getSensitivity()).isEqualTo("CLASSIFIED");
+    }
+
+    @Test
+    void publishSjpCourtList_treatsDeltaPublicAsPublicForSensitivity() {
+        when(courtListPublisher.publish(anyString(), any(DtsMeta.class))).thenReturn(200);
+
+        service.publishSjpCourtList("SJP_DELTA_PUBLIC_LIST", null, null,
+                new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(capturePublishedMeta().getSensitivity()).isEqualTo("PUBLIC");
+    }
+
+    @Test
+    void publishSjpCourtList_rejectsUnknownListTypeInsteadOfDefaultingToPublic() {
+        SjpCourtListPublishService.SjpPublishResult result =
+                service.publishSjpCourtList("SJP_PUBLISH_LIST", null, null,
+                        new SjpListPayload("2025-03-09T10:00:00", ONE_CASE));
+
+        assertThat(result.getStatus()).isEqualTo("FAILED");
+        assertThat(result.getMessage()).contains("SJP_PUBLISH_LIST");
+        verify(courtListPublisher, never()).publish(anyString(), any(DtsMeta.class));
+    }
+
     // ── helper ───────────────────────────────────────────────────────────────
 
     private DtsMeta capturePublishedMeta() {

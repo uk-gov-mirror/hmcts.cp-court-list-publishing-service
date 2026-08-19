@@ -559,4 +559,61 @@ class CourtListStatusRepositoryTest {
         // Then
         assertThat(foundEntities).isEmpty();
     }
+
+    // ── SJP rows: no court centre, no file ───────────────────────────────────
+
+    private CourtListStatusEntity sjpEntity(CourtListType type, LocalDate publishDate) {
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                UUID.randomUUID(),
+                null,               // SJP is national - no court centre
+                Status.SUCCESSFUL,
+                null,               // SJP publishes no file
+                type,
+                Instant.now());
+        entity.setPublishDate(publishDate);
+        return entity;
+    }
+
+    @Test
+    void save_shouldPersistSjpRow_withNullCourtCentreIdAndNullFileStatus() {
+        CourtListStatusEntity saved = repository.save(
+                sjpEntity(CourtListType.SJP_PUBLIC_FULL_ENGLISH, LocalDate.of(2026, 8, 19)));
+        entityManager.flush();
+        entityManager.clear();
+
+        CourtListStatusEntity reloaded = repository.getByCourtListId(saved.getCourtListId());
+        assertThat(reloaded).isNotNull();
+        assertThat(reloaded.getCourtCentreId()).isNull();
+        assertThat(reloaded.getFileStatus()).isNull();
+        assertThat(reloaded.getCourtListType()).isEqualTo(CourtListType.SJP_PUBLIC_FULL_ENGLISH);
+    }
+
+    @Test
+    void findByPublishDateAndCourtListType_shouldLocateSjpRowWithoutACourtCentreId() {
+        LocalDate publishDate = LocalDate.of(2026, 8, 19);
+        repository.save(sjpEntity(CourtListType.SJP_PRESS_DELTA_WELSH, publishDate));
+        entityManager.flush();
+        entityManager.clear();
+
+        Optional<CourtListStatusEntity> found = repository.findByPublishDateAndCourtListType(
+                publishDate, CourtListType.SJP_PRESS_DELTA_WELSH);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getCourtCentreId()).isNull();
+    }
+
+    @Test
+    void findByPublishDateAndCourtListType_shouldNotConfuseLanguagesOrRequestTypes() {
+        LocalDate publishDate = LocalDate.of(2026, 8, 19);
+        repository.save(sjpEntity(CourtListType.SJP_PUBLIC_FULL_ENGLISH, publishDate));
+        repository.save(sjpEntity(CourtListType.SJP_PUBLIC_FULL_WELSH, publishDate));
+        repository.save(sjpEntity(CourtListType.SJP_PUBLIC_DELTA_ENGLISH, publishDate));
+        repository.save(sjpEntity(CourtListType.SJP_PUBLIC_DELTA_WELSH, publishDate));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(repository.findByPublishDateAndCourtListType(
+                publishDate, CourtListType.SJP_PUBLIC_DELTA_WELSH)).isPresent();
+        assertThat(repository.findAll()).hasSize(4);
+    }
 }
