@@ -11,6 +11,14 @@ public final class JobDataConstant {
     public static final String PUBLISH_DATE = "publishDate";
     public static final String USER_ID = "userId";
 
+    public static final String SJP_LIST_ID = "sjpListId";
+    public static final String SJP_COURT_ID_NUMERIC = "sjpCourtIdNumeric";
+    public static final String SJP_LIST_TYPE = "sjpListType";
+    public static final String SJP_PUBLISH_DATE = "sjpPublishDate";
+    public static final String SJP_LANGUAGE = "sjpLanguage";
+    public static final String SJP_REQUEST_TYPE = "sjpRequestType";
+    public static final String SJP_PAYLOAD = "sjpPayload";
+
     private JobDataConstant() {
         // utility class
     }

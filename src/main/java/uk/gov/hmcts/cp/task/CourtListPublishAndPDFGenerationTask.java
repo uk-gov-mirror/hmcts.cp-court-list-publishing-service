@@ -5,25 +5,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.models.CourtListPayload;
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
-import uk.gov.hmcts.cp.openapi.model.Status;
-import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.CaTHService;
 import uk.gov.hmcts.cp.services.CourtListPdfHelper;
 import uk.gov.hmcts.cp.services.CourtListQueryService;
+import uk.gov.hmcts.cp.services.CourtListStatusUpdater;
 import uk.gov.hmcts.cp.taskmanager.domain.ExecutionInfo;
 import uk.gov.hmcts.cp.taskmanager.service.task.ExecutableTask;
 import uk.gov.hmcts.cp.taskmanager.service.task.Task;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.util.EnumSet;
-import java.util.Set;
 import java.util.UUID;
 
 import static uk.gov.hmcts.cp.taskmanager.domain.ExecutionInfo.executionInfo;
@@ -38,19 +31,18 @@ public class CourtListPublishAndPDFGenerationTask implements ExecutableTask {
 
     public static final String ALERT_PATTERN = "PUBLISHING_FAILED";
 
-    private final CourtListStatusRepository repository;
+    private final CourtListStatusUpdater statusUpdater;
     private final CourtListQueryService courtListQueryService;
     private final CaTHService cathService;
     private final CourtListPdfHelper pdfHelper;
     private final boolean cathPublishingEnabled;
-    private enum ErrorContext { PUBLISH, FILE }
 
-    public CourtListPublishAndPDFGenerationTask(CourtListStatusRepository repository,
+    public CourtListPublishAndPDFGenerationTask(CourtListStatusUpdater statusUpdater,
                                                 CourtListQueryService courtListQueryService,
                                                 CaTHService cathService,
                                                 CourtListPdfHelper pdfHelper,
                                                 @Value("${cath.publishing-enabled:false}") boolean cathPublishingEnabled) {
-        this.repository = repository;
+        this.statusUpdater = statusUpdater;
         this.courtListQueryService = courtListQueryService;
         this.cathService = cathService;
         this.pdfHelper = pdfHelper;
@@ -87,7 +79,7 @@ public class CourtListPublishAndPDFGenerationTask implements ExecutableTask {
 
         try {
             if (courtListId != null && cathSucceeded) {
-                updateStatusToPublishSuccessful(courtListId);
+                statusUpdater.markPublishSuccessful(courtListId);
             }
         } catch (Exception e) {
             logger.error("Error {} updating court list publish status to PUBLISH_SUCCESSFUL", ALERT_PATTERN, e);
@@ -106,12 +98,12 @@ public class CourtListPublishAndPDFGenerationTask implements ExecutableTask {
         try {
             UUID fileId = generateAndUploadPdf(executionInfo, pdfPayload);
             if (fileId != null && courtListId != null) {
-                updateFileIdAndLastUpdated(courtListId, fileId);
+                statusUpdater.markFileSuccessful(courtListId, fileId);
             }
         } catch (Exception e) {
             logger.error("Error {} generating and uploading PDF", ALERT_PATTERN, e);
             if (courtListId != null) {
-                updateErrorMessage(courtListId, e, ErrorContext.FILE);
+                statusUpdater.markFileFailed(courtListId, e);
             }
         }
 
@@ -135,7 +127,7 @@ public class CourtListPublishAndPDFGenerationTask implements ExecutableTask {
         } catch (Exception e) {
             logger.error("Error {} querying or sending court list to CaTH", ALERT_PATTERN, e);
             if (courtListId != null) {
-                updateErrorMessage(courtListId, e, ErrorContext.PUBLISH);
+                statusUpdater.markPublishFailed(courtListId, e);
             }
             return false;
         }
@@ -245,60 +237,6 @@ public class CourtListPublishAndPDFGenerationTask implements ExecutableTask {
             logger.warn("Could not extract userId from JsonObject", e);
             return null;
         }
-    }
-
-    private void updateStatusToPublishSuccessful(UUID courtListId) {
-        CourtListStatusEntity existingCourtListPublishEntity = repository.getByCourtListId(courtListId);
-        if (existingCourtListPublishEntity == null) {
-            logger.warn("No record found with court list ID: {}", courtListId);
-            return;
-        }
-
-        existingCourtListPublishEntity.setPublishStatus(Status.SUCCESSFUL);
-        existingCourtListPublishEntity.setLastUpdated(Instant.now());
-        repository.save(existingCourtListPublishEntity);
-        logger.info("Successfully updated status to SUCCESSFUL for court list ID: {}", courtListId);
-    }
-
-    private void updateFileIdAndLastUpdated(UUID courtListId, UUID fileId) {
-        CourtListStatusEntity existingCourtListPublishEntity = repository.getByCourtListId(courtListId);
-        if (existingCourtListPublishEntity == null) {
-            logger.warn("No record found with court list ID: {}", courtListId);
-            return;
-        }
-        existingCourtListPublishEntity.setFileId(fileId);
-        existingCourtListPublishEntity.setFileStatus(Status.SUCCESSFUL);
-        existingCourtListPublishEntity.setFileErrorMessage(null);
-        existingCourtListPublishEntity.setLastUpdated(Instant.now());
-        existingCourtListPublishEntity.setPublishCount(existingCourtListPublishEntity.getPublishCount() + 1);
-        repository.save(existingCourtListPublishEntity);
-        logger.info("Successfully updated fileId and lastUpdated for court list ID: {}", courtListId);
-    }
-
-    private void updateErrorMessage(UUID courtListId, Exception e, ErrorContext context) {
-        CourtListStatusEntity entity = repository.getByCourtListId(courtListId);
-        if (entity == null) {
-            logger.warn("No record found with court list ID: {}", courtListId);
-            return;
-        }
-        String message = buildErrorMessage(e);
-        if (context == ErrorContext.PUBLISH) {
-            entity.setPublishErrorMessage(message);
-            entity.setPublishStatus(Status.FAILED);
-            logger.info("Saved publish error message for court list ID: {}", courtListId);
-        } else {
-            entity.setFileErrorMessage(message);
-            entity.setFileStatus(Status.FAILED);
-            logger.info("Saved file error message for court list ID: {}", courtListId);
-        }
-        entity.setLastUpdated(Instant.now());
-        repository.save(entity);
-    }
-
-    private static String buildErrorMessage(Exception e) {
-        StringWriter sw = new StringWriter();
-        e.printStackTrace(new PrintWriter(sw));
-        return sw.toString();
     }
 
     private UUID extractCourtListId(JsonObject jobData) {

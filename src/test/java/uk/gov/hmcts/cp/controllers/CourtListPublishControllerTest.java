@@ -3,7 +3,6 @@ package uk.gov.hmcts.cp.controllers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import uk.gov.hmcts.cp.config.CourtListPublishingSystemUserConfig;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,7 +18,6 @@ import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
-import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService;
 import uk.gov.hmcts.cp.services.sjp.SjpCourtListPublishService.SjpPublishResult;
 
@@ -38,7 +36,6 @@ import uk.gov.hmcts.cp.openapi.model.SjpListType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -61,8 +58,6 @@ class CourtListPublishControllerTest {
     @Mock
     private CourtListTaskTriggerService courtListTaskTriggerService;
 
-    @Mock
-    private CourtListDownloadService courtListDownloadService;
 
     @Mock
     private SjpCourtListPublishService sjpCourtListPublishService;
@@ -74,7 +69,6 @@ class CourtListPublishControllerTest {
     private ObjectMapper objectMapper;
 
     private static final String PUBLISH_URL = "/api/court-list-publish/publish";
-    private static final String BASE_URL = "/api/court-list-publish";
     private static final String SJP_PUBLISH_URL = "/api/court-list-publish/sjp/publishCourtList";
 
     @BeforeEach
@@ -241,8 +235,8 @@ class CourtListPublishControllerTest {
     @Test
     void publishSjpCourtList_returnsOk_withVendorContentTypeAndAcceptedStatus() throws Exception {
         when(sjpCourtListPublishService.publishSjpCourtList(
-                eq("SJP_PUBLIC_LIST"), isNull(), isNull(), any()))
-                .thenReturn(SjpPublishResult.accepted("SJP_PUBLIC_LIST", "SJP court list published to CaTH"));
+                eq(SjpListType.SJP_PUBLIC_LIST), isNull(), isNull(), any()))
+                .thenReturn(SjpPublishResult.accepted(SjpListType.SJP_PUBLIC_LIST, "SJP court list published to CaTH"));
 
         PublishCourtListRequest request = new PublishCourtListRequest()
                 .listType(SjpListType.SJP_PUBLIC_LIST)
@@ -260,8 +254,8 @@ class CourtListPublishControllerTest {
     @Test
     void publishSjpCourtList_passesLanguageAndRequestTypeToService() throws Exception {
         when(sjpCourtListPublishService.publishSjpCourtList(
-                eq("SJP_PRESS_LIST"), eq("WELSH"), eq("FULL"), any()))
-                .thenReturn(SjpPublishResult.accepted("SJP_PRESS_LIST", "published"));
+                eq(SjpListType.SJP_PRESS_LIST), eq("WELSH"), eq("FULL"), any()))
+                .thenReturn(SjpPublishResult.accepted(SjpListType.SJP_PRESS_LIST, "published"));
 
         PublishCourtListRequest request = new PublishCourtListRequest()
                 .listType(SjpListType.SJP_PRESS_LIST)
@@ -276,14 +270,14 @@ class CourtListPublishControllerTest {
                 .andExpect(content().contentType(SJP_MEDIA_TYPE));
 
         verify(sjpCourtListPublishService).publishSjpCourtList(
-                eq("SJP_PRESS_LIST"), eq("WELSH"), eq("FULL"), any());
+                eq(SjpListType.SJP_PRESS_LIST), eq("WELSH"), eq("FULL"), any());
     }
 
     @Test
     void publishSjpCourtList_passesListPayloadToService() throws Exception {
         when(sjpCourtListPublishService.publishSjpCourtList(
-                eq("SJP_PUBLIC_LIST"), isNull(), isNull(), any()))
-                .thenReturn(SjpPublishResult.accepted("SJP_PUBLIC_LIST", "published"));
+                eq(SjpListType.SJP_PUBLIC_LIST), isNull(), isNull(), any()))
+                .thenReturn(SjpPublishResult.accepted(SjpListType.SJP_PUBLIC_LIST, "published"));
 
         String requestJson = """
                 {
@@ -311,7 +305,7 @@ class CourtListPublishControllerTest {
                 .andExpect(content().contentType(SJP_MEDIA_TYPE));
 
         verify(sjpCourtListPublishService).publishSjpCourtList(
-                eq("SJP_PUBLIC_LIST"), isNull(), isNull(), any());
+                eq(SjpListType.SJP_PUBLIC_LIST), isNull(), isNull(), any());
     }
 
     @Test
@@ -325,7 +319,7 @@ class CourtListPublishControllerTest {
     @Test
     void publishSjpCourtList_returnsOk_withFailedStatus_whenServiceFails() throws Exception {
         when(sjpCourtListPublishService.publishSjpCourtList(any(), any(), any(), any()))
-                .thenReturn(SjpPublishResult.failed("SJP_PUBLIC_LIST", "CaTH returned status 500"));
+                .thenReturn(SjpPublishResult.failed(SjpListType.SJP_PUBLIC_LIST, "CaTH returned status 500"));
 
         PublishCourtListRequest request = new PublishCourtListRequest()
                 .listType(SjpListType.SJP_PUBLIC_LIST)

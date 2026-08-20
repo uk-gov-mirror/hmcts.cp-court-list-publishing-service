@@ -152,6 +152,23 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
     }
 
     @Test
+    void cleanupOldData_shouldDeleteSjpRecordAndJsonBlob_afterRetentionPeriod() throws Exception {
+        // SJP rows share court_list_publish_status with the standard flow but have no
+        // courtCentreId/fileId (no court-centre concept, no PDF) — cleanup must skip the PDF
+        // blob entirely and still delete the CaTH JSON blob (same naming convention) plus the row.
+        UUID courtListId = UUID.randomUUID();
+        Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
+        LocalDate oldPublishDate = LocalDate.now().minusDays(DAYS_BEYOND_RETENTION);
+        insertSjpPublishStatusRow(courtListId, oldInstant, oldPublishDate);
+        uploadCathJsonOnly(courtListId);
+
+        invokePublishStatusCleanup();
+
+        assertRowAbsent(courtListId);
+        assertBlobsDeleted(courtListId);
+    }
+
+    @Test
     void cleanupOldData_shouldDeleteRecord_whenOnlyPdfExists_cathJsonNotInStorage() throws Exception {
         UUID courtListId = UUID.randomUUID();
         Instant oldInstant = Instant.now().minus(DAYS_BEYOND_RETENTION, ChronoUnit.DAYS);
@@ -202,6 +219,30 @@ public class CleanupJobIntegrationTest extends CourtListIntegrationTestBase {
             }
             ps.executeUpdate();
         }
+    }
+
+    /** SJP row shape: no court centre, no file/PDF — courtCentreId and fileId are both null. */
+    private void insertSjpPublishStatusRow(UUID courtListId, Instant lastUpdated, LocalDate publishDate)
+            throws SQLException {
+        try (Connection c = connection();
+                PreparedStatement ps = c.prepareStatement(
+                        "INSERT INTO court_list_publish_status (court_list_id, court_centre_id, publish_status, file_status, court_list_type, last_updated, publish_date, file_id) VALUES (?,?,?,?,?,?,?,?)")) {
+            ps.setObject(1, courtListId);
+            ps.setNull(2, Types.OTHER);
+            ps.setString(3, "SUCCESSFUL");
+            ps.setNull(4, Types.VARCHAR);
+            ps.setString(5, "SJP_PUBLIC_FULL_ENGLISH");
+            ps.setTimestamp(6, Timestamp.from(lastUpdated));
+            ps.setDate(7, Date.valueOf(publishDate));
+            ps.setNull(8, Types.OTHER);
+            ps.executeUpdate();
+        }
+    }
+
+    private void uploadCathJsonOnly(UUID courtListId) {
+        byte[] jsonContent = ("{\"courtListId\":\"" + courtListId + "\"}").getBytes(StandardCharsets.UTF_8);
+        BLOB_CONTAINER.getBlobClient(CaTHService.buildBlobName(courtListId)).upload(
+                new ByteArrayInputStream(jsonContent), jsonContent.length, true);
     }
 
     private void assertRowExists(UUID courtListId) throws SQLException {

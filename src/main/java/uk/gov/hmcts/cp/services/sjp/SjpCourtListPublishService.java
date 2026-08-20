@@ -7,27 +7,28 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import uk.gov.hmcts.cp.config.ObjectMapperConfig;
-import uk.gov.hmcts.cp.domain.DtsMeta;
+import uk.gov.hmcts.cp.domain.CourtListStatusEntity;
 import uk.gov.hmcts.cp.domain.sjp.SjpListPayload;
-import uk.gov.hmcts.cp.services.CourtListPublisher;
-import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
-import uk.gov.hmcts.cp.services.PublicationSchema;
-import uk.gov.hmcts.cp.services.SchemaValidationException;
-import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
+import uk.gov.hmcts.cp.openapi.model.CourtListType;
+import uk.gov.hmcts.cp.openapi.model.SjpListType;
+import uk.gov.hmcts.cp.openapi.model.Status;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
- * Publishes SJP court lists to CaTH for the two in-scope event types:
- * <ul>
- *   <li>SJP_PUBLIC_LIST – triggered by public.sjp.pending-cases-public-list-generated
- *       (published to CaTH list type SJP_PUBLIC_LIST)</li>
- *   <li>SJP_PRESS_LIST   – triggered by public.sjp.pending-cases-press-list-generated
- *       (mapped to CaTH list type SJP_PRESS_LIST)</li>
- * </ul>
- * The press transparency report (public.sjp.press-transparency-report-generated) is out of
- * scope and remains in Staging PubHub.
+ * Validates and accepts SJP publish requests (full/delta, public/press); the transform, blob
+ * upload, and CaTH send are queued as an async job ({@link SjpTaskTriggerService} /
+ * {@code SjpPublishTask}), same split as the standard flow. Tracked in the shared
+ * {@code court_list_publish_status} table, keyed by the fused {@link CourtListType} (see
+ * {@link SjpStatusListTypeMapper}) plus publishDate; {@code courtCentreId} is always null
+ * (SJP is national).
  */
 @Service
 public class SjpCourtListPublishService {
@@ -35,66 +36,51 @@ public class SjpCourtListPublishService {
     private static final Logger LOG = LoggerFactory.getLogger(SjpCourtListPublishService.class);
     private static final String STATUS_ACCEPTED = "ACCEPTED";
     private static final String STATUS_FAILED = "FAILED";
-    private static final String PROVENANCE = "COMMON_PLATFORM";
-    private static final String TYPE_LIST = "LIST";
-    private static final String CATH_LIST_TYPE_PUBLIC = "SJP_PUBLIC_LIST";
-    private static final String CATH_LIST_TYPE_PRESS = "SJP_PRESS_LIST";
-    private static final String SENSITIVITY_PUBLIC = "PUBLIC";
-    private static final String SENSITIVITY_CLASSIFIED = "CLASSIFIED";
-    private static final String DOCUMENT_NAME_PUBLIC = "SJP Public list";
-    private static final String DOCUMENT_NAME_PRESS = "SJP Press list";
-    public static final String SJP_PUBLIC_LIST = "SJP_PUBLIC_LIST";
-    public static final String SJP_PRESS_LIST = "SJP_PRESS_LIST";
-
-    private final SjpToCathPayloadTransformer transformer;
-    private final CourtListPublisher courtListPublisher;
-    private final DocumentSanitizer documentSanitizer;
-    private final JsonSchemaValidatorService jsonSchemaValidatorService;
+    private final CourtListStatusRepository repository;
+    private final SjpTaskTriggerService sjpTaskTriggerService;
     private final boolean cathPublishingEnabled;
     private static final ObjectMapper OBJECT_MAPPER = ObjectMapperConfig.getObjectMapper();
 
     public SjpCourtListPublishService(
-            SjpToCathPayloadTransformer transformer,
-            CourtListPublisher courtListPublisher,
-            DocumentSanitizer documentSanitizer,
-            JsonSchemaValidatorService jsonSchemaValidatorService,
+            CourtListStatusRepository repository,
+            SjpTaskTriggerService sjpTaskTriggerService,
             @Value("${cath.publishing-enabled:false}") boolean cathPublishingEnabled) {
-        this.transformer = transformer;
-        this.courtListPublisher = courtListPublisher;
-        this.documentSanitizer = documentSanitizer;
-        this.jsonSchemaValidatorService = jsonSchemaValidatorService;
+        this.repository = repository;
+        this.sjpTaskTriggerService = sjpTaskTriggerService;
         this.cathPublishingEnabled = cathPublishingEnabled;
     }
 
     /**
-     * Publish SJP court list to CaTH.
+     * Accepts an SJP list for publishing; only request-level validation happens here (transform,
+     * upload, and CaTH send happen later in {@code SjpPublishTask}).
      *
-     * <p>Language is derived from {@code listPayload.isWelsh} — {@code true} → "WELSH", otherwise
-     * "ENGLISH" — mirroring the court-centre flag used by the non-SJP publishing flow.
-     * An explicit {@code language} argument overrides the payload-derived value when non-blank.
-     *
-     * @param listType    SJP_PUBLIC_LIST or SJP_PRESS_LIST
+     * @param listType    the SJP list variant being published
      * @param language    optional override (default: derived from listPayload.isWelsh)
      * @param requestType optional request type (e.g. "FULL"); passed through to DtsMeta
      * @param listPayload required for CaTH publish (generatedDateAndTime, readyCases); can be Map or POJO from API
      * @return status (ACCEPTED/FAILED), listType, message
      */
     public SjpPublishResult publishSjpCourtList(
-            String listType,
+            SjpListType listType,
             String language,
             String requestType,
             Object listPayload) {
-        LOG.info("SJP court list publish request for listType: {}", Encode.forJava(listType));
+        LOG.info("SJP court list publish request for listType: {}", listType);
 
         if (!cathPublishingEnabled) {
             LOG.debug("CaTH publishing is disabled (CATH_PUBLISHING_ENABLED=false), skipping SJP CaTH send");
             return SjpPublishResult.accepted(listType, "CaTH publishing is disabled");
         }
 
-        SjpListPayload payload;
+        if (listType == null) {
+            return SjpPublishResult.failed(null, "listType is required to publish to CaTH");
+        }
+
         if (listPayload == null) {
             return SjpPublishResult.failed(listType, "listPayload is required to publish to CaTH");
         }
+
+        SjpListPayload payload;
         try {
             payload = OBJECT_MAPPER.convertValue(listPayload, SjpListPayload.class);
         } catch (Exception e) {
@@ -107,76 +93,96 @@ public class SjpCourtListPublishService {
         }
 
         try {
-            boolean isPressList = SJP_PRESS_LIST.equals(listType);
-            String documentName = isPressList ? DOCUMENT_NAME_PRESS : DOCUMENT_NAME_PUBLIC;
-            String cathListType = isPressList ? CATH_LIST_TYPE_PRESS : CATH_LIST_TYPE_PUBLIC;
-            String sensitivity = isPressList ? SENSITIVITY_CLASSIFIED : SENSITIVITY_PUBLIC;
+            String courtIdNumeric = normalizeCourtId(payload.getCourtIdNumeric());
+            LocalDate publishDate = deriveDate(payload.getGeneratedDateAndTime());
+            String lang = resolveLanguage(language, payload);
+            CourtListType fusedListType = SjpStatusListTypeMapper.toCourtListType(listType, lang);
+            UUID courtListId = findOrCreateCourtListId(fusedListType, publishDate);
 
-            // Derive language from isWelsh on the payload (mirrors CaTHService / non-SJP flow).
-            // An explicit language argument takes precedence when provided.
-            String payloadLanguage = Boolean.TRUE.equals(payload.getIsWelsh()) ? "WELSH" : "ENGLISH";
-            String lang = (language != null && !language.isBlank()) ? language : payloadLanguage;
+            String payloadJson = OBJECT_MAPPER.writeValueAsString(payload);
+            sjpTaskTriggerService.triggerSjpPublishTask(
+                    courtListId, courtIdNumeric, listType, publishDate, language, requestType, payloadJson);
 
-            String payloadJson = documentSanitizer.sanitize(transformer.transform(payload, documentName));
-            PublicationSchema schema = isPressList ? PublicationSchema.SJP_PRESS : PublicationSchema.SJP_PUBLIC;
-            jsonSchemaValidatorService.validate(payloadJson, schema);
-            DtsMeta meta = buildDtsMeta(cathListType, sensitivity, lang, requestType, payload.getCourtIdNumeric());
-
-            int status = courtListPublisher.publish(payloadJson, meta);
-            LOG.info("SJP court list published to CaTH, listType={}, language={}, requestType={}, status={}",
-                    Encode.forJava(listType), Encode.forJava(lang), Encode.forJava(requestType), status);
-
-            if (status >= 200 && status < 300) {
-                return SjpPublishResult.accepted(listType, "SJP court list published to CaTH");
-            }
-            return SjpPublishResult.failed(listType, "CaTH returned status " + status);
-        } catch (SchemaValidationException e) {
-            LOG.error("SJP payload failed schema validation for listType={}: {}", listType, e.getMessage());
-            return SjpPublishResult.failed(listType, "Payload failed schema validation: " + e.getMessage());
+            LOG.info("SJP court list publish request queued, courtListId={}, listType={}",
+                    courtListId, listType);
+            return SjpPublishResult.accepted(listType, "SJP court list publish request accepted for processing");
         } catch (Exception e) {
-            LOG.error("Failed to publish SJP court list to CaTH: {}", Encode.forJava(e.getMessage()), e);
-            return SjpPublishResult.failed(listType, "Failed to publish to CaTH: " + e.getMessage());
+            LOG.error("Failed to queue SJP court list for publishing: {}", Encode.forJava(e.getMessage()), e);
+            return SjpPublishResult.failed(listType, "Failed to queue SJP court list for publishing: " + e.getMessage());
         }
     }
 
     /**
-     * Same court id resolution as {@link uk.gov.hmcts.cp.services.CaTHService#sendCourtListToCaTH}:
-     * use numeric id from payload when present, otherwise {@code "0"}.
-     * {@code requestType} (e.g. "FULL") is passed through to DtsMeta when provided.
+     * Looks up an existing record by (publishDate, fused courtListType) — courtCentreId is always
+     * null for SJP rows, since SJP is a national list with no court-centre concept — and reuses
+     * its {@code courtListId}, otherwise creates a new one. Same lookup-and-reuse pattern as
+     * {@code CourtListPublishStatusService#createOrUpdate}.
      */
-    private static DtsMeta buildDtsMeta(String listType, String sensitivity, String language,
-                                        String requestType, String courtIdNumeric) {
-        final String courtIdForMeta = courtIdNumeric != null && !courtIdNumeric.isBlank()
-                ? courtIdNumeric
-                : "0";
-        Instant now = Instant.now();
-        String contentDate = now.toString();
-        String displayTo = now.plus(24, ChronoUnit.HOURS).toString();
-        return DtsMeta.builder()
-                .provenance(PROVENANCE)
-                .type(TYPE_LIST)
-                .listType(listType)
-                .courtId(courtIdForMeta)
-                .contentDate(contentDate)
-                .language(language)
-                .sensitivity(sensitivity)
-                .displayFrom(contentDate)
-                .displayTo(displayTo)
-                .requestType(requestType)
-                .build();
+    private UUID findOrCreateCourtListId(CourtListType fusedListType, LocalDate publishDate) {
+        Optional<CourtListStatusEntity> existing = repository.findByPublishDateAndCourtListType(
+                publishDate, fusedListType);
+        if (existing.isPresent()) {
+            CourtListStatusEntity entity = existing.get();
+            entity.setPublishStatus(Status.REQUESTED);
+            entity.setLastUpdated(Instant.now());
+            repository.save(entity);
+            return entity.getCourtListId();
+        }
+        UUID courtListId = UUID.randomUUID();
+        CourtListStatusEntity entity = new CourtListStatusEntity(
+                courtListId, null, Status.REQUESTED, null, fusedListType, Instant.now());
+        entity.setPublishDate(publishDate);
+        repository.save(entity);
+        return courtListId;
+    }
+
+    /**
+     * use numeric id from payload when present, otherwise {@code "0"}.
+     */
+    private static String normalizeCourtId(String courtIdNumeric) {
+        return courtIdNumeric != null && !courtIdNumeric.isBlank() ? courtIdNumeric : "0";
+    }
+
+    /** Explicit language argument wins; otherwise derived from listPayload.isWelsh. */
+    private static String resolveLanguage(String language, SjpListPayload payload) {
+        if (language != null && !language.isBlank()) {
+            return language;
+        }
+        return Boolean.TRUE.equals(payload.getIsWelsh()) ? "WELSH" : "ENGLISH";
+    }
+
+    /** Derives the dedup-key date from generatedDateAndTime, defaulting to today (UTC) if unparseable. */
+    private static LocalDate deriveDate(String generatedDateAndTime) {
+        if (generatedDateAndTime == null || generatedDateAndTime.isBlank()) {
+            return LocalDate.now(ZoneOffset.UTC);
+        }
+        try {
+            return OffsetDateTime.parse(generatedDateAndTime).toLocalDate();
+        } catch (DateTimeParseException e) {
+            try {
+                String datePart = generatedDateAndTime.length() >= 10
+                        ? generatedDateAndTime.substring(0, 10)
+                        : generatedDateAndTime;
+                return LocalDate.parse(datePart);
+            } catch (Exception ex) {
+                LOG.warn("Could not parse generatedDateAndTime '{}', defaulting to today",
+                        Encode.forJava(generatedDateAndTime));
+                return LocalDate.now(ZoneOffset.UTC);
+            }
+        }
     }
 
     @lombok.Value
     public static class SjpPublishResult {
         String status;
-        String listType;
+        SjpListType listType;
         String message;
 
-        public static SjpPublishResult accepted(String listType, String message) {
+        public static SjpPublishResult accepted(SjpListType listType, String message) {
             return new SjpPublishResult(STATUS_ACCEPTED, listType, message);
         }
 
-        public static SjpPublishResult failed(String listType, String message) {
+        public static SjpPublishResult failed(SjpListType listType, String message) {
             return new SjpPublishResult(STATUS_FAILED, listType, message);
         }
     }

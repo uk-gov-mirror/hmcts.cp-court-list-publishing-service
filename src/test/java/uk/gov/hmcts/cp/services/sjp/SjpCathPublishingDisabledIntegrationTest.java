@@ -1,6 +1,5 @@
 package uk.gov.hmcts.cp.services.sjp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,21 +9,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import uk.gov.hmcts.cp.cleanup.CleanupJobService;
-import uk.gov.hmcts.cp.config.ObjectMapperConfig;
 import uk.gov.hmcts.cp.controllers.CourtListPublishController;
-import uk.gov.hmcts.cp.services.CourtListPublisher;
+import uk.gov.hmcts.cp.repositories.CourtListStatusRepository;
 import uk.gov.hmcts.cp.services.CourtListPublishStatusService;
 import uk.gov.hmcts.cp.services.CourtListTaskTriggerService;
-import uk.gov.hmcts.cp.services.JsonSchemaValidatorService;
 import uk.gov.hmcts.cp.services.ReferenceDataService;
 import uk.gov.hmcts.cp.services.courtlistdownload.CourtListDownloadService;
-import uk.gov.hmcts.cp.services.sanitization.DocumentSanitizer;
-import uk.gov.hmcts.cp.services.sanitization.HtmlStrippingSanitizer;
-import uk.gov.hmcts.cp.services.sanitization.RequiredStringFieldsRegistry;
-import uk.gov.hmcts.cp.services.sanitization.WafPatternSanitizer;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,10 +25,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration test for the SJP → CaTH publish flow when CATH_PUBLISHING_ENABLED=false.
- *
  * Wires the real SjpCourtListPublishService with cathPublishingEnabled=false so the
  * feature flag is exercised through the full HTTP stack (controller → service → guard).
- * CourtListPublisher is mocked to confirm it is never called when publishing is disabled.
+ * SjpTaskTriggerService is mocked to confirm the async publish job is never queued
+ * when publishing is disabled.
  */
 @ExtendWith(MockitoExtension.class)
 class SjpCathPublishingDisabledIntegrationTest {
@@ -45,8 +37,8 @@ class SjpCathPublishingDisabledIntegrationTest {
             MediaType.parseMediaType("application/vnd.courtlistpublishing-service.sjp.post+json");
     private static final String SJP_PUBLISH_URL = "/api/court-list-publish/sjp/publishCourtList";
 
-    @Mock private CourtListPublisher courtListPublisher;
-    @Mock private JsonSchemaValidatorService jsonSchemaValidatorService;
+    @Mock private CourtListStatusRepository courtListStatusRepository;
+    @Mock private SjpTaskTriggerService sjpTaskTriggerService;
     @Mock private CourtListPublishStatusService service;
     @Mock private CourtListTaskTriggerService courtListTaskTriggerService;
     @Mock private CourtListDownloadService courtListDownloadService;
@@ -54,20 +46,12 @@ class SjpCathPublishingDisabledIntegrationTest {
     @Mock private ReferenceDataService referenceDataService;
 
     private MockMvc mockMvc;
-    private final ObjectMapper objectMapper = ObjectMapperConfig.getObjectMapper();
 
     @BeforeEach
     void setUp() {
-        DocumentSanitizer sanitizer = new DocumentSanitizer(
-                new WafPatternSanitizer("..\\.\\,../"),
-                new HtmlStrippingSanitizer(),
-                new RequiredStringFieldsRegistry());
-
         SjpCourtListPublishService sjpService = new SjpCourtListPublishService(
-                new SjpToCathPayloadTransformer(),
-                courtListPublisher,
-                sanitizer,
-                jsonSchemaValidatorService,
+                courtListStatusRepository,
+                sjpTaskTriggerService,
                 false  // CATH_PUBLISHING_ENABLED=false
         );
 
@@ -110,7 +94,8 @@ class SjpCathPublishingDisabledIntegrationTest {
                 .andExpect(jsonPath("$.listType").value("SJP_PUBLIC_LIST"))
                 .andExpect(jsonPath("$.message").value("CaTH publishing is disabled"));
 
-        verify(courtListPublisher, never()).publish(anyString(), any());
+        verify(sjpTaskTriggerService, never()).triggerSjpPublishTask(
+                any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -140,6 +125,7 @@ class SjpCathPublishingDisabledIntegrationTest {
                 .andExpect(jsonPath("$.listType").value("SJP_PRESS_LIST"))
                 .andExpect(jsonPath("$.message").value("CaTH publishing is disabled"));
 
-        verify(courtListPublisher, never()).publish(anyString(), any());
+        verify(sjpTaskTriggerService, never()).triggerSjpPublishTask(
+                any(), any(), any(), any(), any(), any(), any());
     }
 }

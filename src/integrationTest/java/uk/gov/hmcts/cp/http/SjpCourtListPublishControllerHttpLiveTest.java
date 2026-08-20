@@ -103,16 +103,44 @@ public class SjpCourtListPublishControllerHttpLiveTest extends AbstractTest {
 
     @Test
     void postSjpCourtList_returns400_whenListTypeInvalid() {
+        // listPayload is fully present and valid, so the 400 is unambiguously caused by the
+        // unrecognised listType value, not a missing/invalid payload.
         String requestJson = """
             {
-                "listType": "INVALID_LIST_TYPE"
+                "listType": "SJP_PUBLISH_LIST",
+                "listPayload": {
+                    "generatedDateAndTime": "2025-03-09T10:00:00",
+                    "readyCases": [
+                        {
+                            "caseUrn": "SJP-INT-TEST-INVALID",
+                            "defendantName": "Defendant Invalid",
+                            "prosecutorName": "CPS",
+                            "sjpOffences": [{"title": "Offence", "wording": "Wording"}]
+                        }
+                    ]
+                }
             }
             """;
 
         assertThatThrownBy(() -> postSjpRequest(requestJson))
                 .isInstanceOf(HttpClientErrorException.class)
                 .satisfies(ex -> {
-                    assertThat(((HttpClientErrorException) ex).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    HttpClientErrorException httpEx = (HttpClientErrorException) ex;
+                    assertThat(httpEx.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    // An unrecognised enum value is rejected by Jackson during request-body
+                    // deserialization, before the controller (and its ErrorResponse contract via
+                    // GlobalExceptionHandler) ever runs - so the body is Spring's own generic
+                    // error shape, not this app's usual {error, message, traceId} ErrorResponse.
+                    JsonNode body;
+                    try {
+                        body = objectMapper.readTree(httpEx.getResponseBodyAsString());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                    assertThat(body.get("status").asInt()).isEqualTo(400);
+                    assertThat(body.get("error").asText()).isEqualTo("Bad Request");
+                    assertThat(body.has("message")).isFalse();
+                    assertThat(body.has("traceId")).isFalse();
                 });
     }
 

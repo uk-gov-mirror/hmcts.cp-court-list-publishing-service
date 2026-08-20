@@ -1,7 +1,5 @@
 package uk.gov.hmcts.cp.domain;
 
-import static jakarta.persistence.EnumType.STRING;
-
 import uk.gov.hmcts.cp.openapi.model.CourtListType;
 import uk.gov.hmcts.cp.openapi.model.Status;
 
@@ -18,6 +16,12 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
+import static jakarta.persistence.EnumType.STRING;
+
+/**
+ * Shared by the standard/online-public court list flow and the SJP flow. A repeat publish for
+ * the same key overwrites the existing row (via {@code lastUpdated}) — no content dedup.
+ */
 @Getter
 @Entity
 @Table(name = "court_list_publish_status")
@@ -27,8 +31,9 @@ public class CourtListStatusEntity {
     @Column(name = "court_list_id", nullable = false)
     private UUID courtListId;
 
+    /** NULL for SJP (national, no court centre); required otherwise. */
     @Setter
-    @Column(name = "court_centre_id", nullable = false)
+    @Column(name = "court_centre_id")
     private UUID courtCentreId;
 
     @Enumerated(STRING)
@@ -36,11 +41,13 @@ public class CourtListStatusEntity {
     @Column(name = "publish_status", nullable = false)
     private Status publishStatus;
 
+    /** NULL for SJP (no file is produced). */
     @Enumerated(STRING)
     @Setter
-    @Column(name = "file_status", nullable = false)
+    @Column(name = "file_status")
     private Status fileStatus;
 
+    /** For SJP rows, one of the fused SJP_* values (see SjpStatusListTypeMapper), not the CaTH wire type. */
     @Enumerated(STRING)
     @Setter
     @Column(name = "court_list_type", nullable = false)
@@ -85,12 +92,11 @@ public class CourtListStatusEntity {
             final CourtListType courtListType,
             final Instant lastUpdated) {
         this.courtListId = Objects.requireNonNull(courtListId);
-        this.courtCentreId = Objects.requireNonNull(courtCentreId);
+        this.courtCentreId = courtCentreId; // null for SJP - see field javadoc
         this.publishStatus = publishStatus;
-        this.fileStatus = Objects.requireNonNull(fileStatus);
+        this.fileStatus = fileStatus;       // null for SJP - see field javadoc
         this.courtListType = Objects.requireNonNull(courtListType);
         this.lastUpdated = Objects.requireNonNull(lastUpdated);
     }
 
 }
-

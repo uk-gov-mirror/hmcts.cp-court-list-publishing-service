@@ -138,10 +138,11 @@ public class CourtListPublishStatusService {
     }
 
 
+    /** Excludes SJP rows (courtCentreId is always null for those) — this is the standard flow's listing. */
     @Transactional
     public List<CourtListPublishResponse> findAll() {
         LOG.atDebug().log("Fetching all court list publish statuses");
-        return repository.findAll().stream()
+        return repository.findByCourtCentreIdIsNotNull().stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
@@ -159,13 +160,6 @@ public class CourtListPublishStatusService {
         if (Objects.isNull(courtCentreId)) {
             LOG.atWarn().log("No court centre id provided");
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ERROR_COURT_CENTRE_ID_REQUIRED);
-        }
-    }
-
-    private void validatePublishStatus(final Status publishStatus) {
-        if (publishStatus == null) {
-            LOG.atWarn().log("No publish status provided");
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ERROR_PUBLISH_STATUS_REQUIRED);
         }
     }
 
@@ -230,7 +224,7 @@ public class CourtListPublishStatusService {
         // Convert String publishStatus to Status enum
         Status publishStatusEnum = entity.getPublishStatus();
         Status fileStatusEnum = entity.getFileStatus();
-        
+
         return new CourtListPublishResponse(
                 entity.getCourtListId(),
                 entity.getCourtCentreId(),

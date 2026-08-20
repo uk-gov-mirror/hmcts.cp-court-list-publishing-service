@@ -137,7 +137,7 @@ class CourtListStatusRepositoryTest {
         entity.setPublishDate(publishDate);
 
         // When
-        CourtListStatusEntity savedEntity = repository.save(entity);
+        repository.save(entity);
         entityManager.flush();
         entityManager.clear();
 
@@ -246,7 +246,7 @@ class CourtListStatusRepositoryTest {
                 courtCentreId,
                 Status.REQUESTED,
                 Status.REQUESTED,
-                CourtListType.STANDARD,
+                CourtListType.FINAL, // Different list type, same court centre - avoids unique index collision
                 Instant.now()
         );
         CourtListStatusEntity entity3 = new CourtListStatusEntity(
@@ -394,7 +394,7 @@ class CourtListStatusRepositoryTest {
         existingEntity.setPublishStatus(newStatus);
         existingEntity.setFileUrl("updated-file.pdf");
         existingEntity.setPublishErrorMessage(null);
-        CourtListStatusEntity updatedEntity = repository.save(existingEntity);
+        repository.save(existingEntity);
         entityManager.flush();
         entityManager.clear();
 
